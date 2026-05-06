@@ -81,6 +81,8 @@ mono_crash.*
 # workspaces, but it is too large for normal GitHub blobs in this repository.
 /Assets/toshi.VLiveKit/VideoRack/Tools/FFmpeg/Windows/ffmpeg.exe
 /Assets/toshi.VLiveKit/VideoRack/Tools/FFmpeg/Windows/ffmpeg.exe.meta
+/Assets/toshi.VLiveKit/VideoRack/Tools/FFmpeg/Windows/ffmpeg.exe.bytes
+/Assets/toshi.VLiveKit/VideoRack/Tools/FFmpeg/Windows/ffmpeg.exe.bytes.meta
 
 # Crashlytics generated file
 crashlytics-build.properties

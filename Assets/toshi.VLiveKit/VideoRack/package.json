@@ -1,7 +1,7 @@
 ﻿{
     "name":  "com.toshi.vlivekit.videorack",
     "displayName":  "VLiveKit VideoRack",
-    "version":  "0.1.8",
+    "version":  "0.1.9",
     "unity":  "2022.3",
     "description":  "Video preparation tools for VLiveKit.",
     "author":  {
@@ -15,15 +15,27 @@
     "files":  [
                   "Editor/",
                   "Editor.meta",
-                  "Tools/",
                   "Tools.meta",
+                  "Tools/FFmpeg.meta",
+                  "Tools/FFmpeg/README.md",
+                  "Tools/FFmpeg/README.md.meta",
+                  "Tools/FFmpeg/Linux.meta",
+                  "Tools/FFmpeg/Linux/.gitkeep",
+                  "Tools/FFmpeg/macOS.meta",
+                  "Tools/FFmpeg/macOS/.gitkeep",
+                  "Tools/FFmpeg/Windows.meta",
+                  "Tools/FFmpeg/Windows/.gitkeep",
+                  "Tools/FFmpeg/Windows/GPL-3.0.txt",
+                  "Tools/FFmpeg/Windows/GPL-3.0.txt.meta",
+                  "Tools/FFmpeg/Windows/README.txt",
+                  "Tools/FFmpeg/Windows/README.txt.meta",
+                  "Tools/FFmpeg/Windows/ffmpeg.exe.bytes",
+                  "Tools/FFmpeg/Windows/ffmpeg.exe.bytes.meta",
                   "ThirdPartyNotices/",
                   "ThirdPartyNotices.meta",
                   "README.md",
                   "README.md.meta",
-                  "package.json.meta",
-                  "Tools/FFmpeg/Windows/ffmpeg.exe",
-                  "Tools/FFmpeg/Windows/ffmpeg.exe.meta"
+                  "package.json.meta"
               ],
     "dependencies":  {
 

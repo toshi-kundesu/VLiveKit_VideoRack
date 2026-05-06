@@ -326,15 +326,38 @@ namespace VLiveKit.VideoRack.Editor
             public static string GetExecutablePath()
             {
 #if UNITY_EDITOR_WIN
-                return Path.Combine(GetToolRoot(), "Windows", "ffmpeg.exe");
+                return GetExecutablePath("Windows", "ffmpeg.exe");
 #elif UNITY_EDITOR_OSX
-                return Path.Combine(GetToolRoot(), "macOS", "ffmpeg");
+                return GetExecutablePath("macOS", "ffmpeg");
 #else
-                return Path.Combine(GetToolRoot(), "Linux", "ffmpeg");
+                return GetExecutablePath("Linux", "ffmpeg");
 #endif
             }
 
-            private static string GetToolRoot()
+            private static string GetExecutablePath(string platformDirectory, string executableName)
+            {
+                var packageToolRoot = GetPackageToolRoot();
+                if (!string.IsNullOrEmpty(packageToolRoot))
+                {
+                    var packageExecutablePath = Path.Combine(packageToolRoot, platformDirectory, executableName);
+                    if (File.Exists(packageExecutablePath))
+                        return packageExecutablePath;
+
+                    var payloadPath = packageExecutablePath + ".bytes";
+                    if (File.Exists(payloadPath))
+                        return EnsureCachedExecutable(payloadPath, platformDirectory, executableName);
+                }
+
+                var projectExecutablePath = Path.Combine(GetProjectToolRoot(), platformDirectory, executableName);
+                if (File.Exists(projectExecutablePath))
+                    return projectExecutablePath;
+
+                return !string.IsNullOrEmpty(packageToolRoot)
+                    ? Path.Combine(packageToolRoot, platformDirectory, executableName)
+                    : projectExecutablePath;
+            }
+
+            private static string GetPackageToolRoot()
             {
                 var packageInfo = UnityEditor.PackageManager.PackageInfo.FindForAssembly(typeof(HapConverterWindow).Assembly);
                 if (packageInfo != null && !string.IsNullOrEmpty(packageInfo.resolvedPath))
@@ -344,12 +367,39 @@ namespace VLiveKit.VideoRack.Editor
                         return packageToolRoot;
                 }
 
+                return null;
+            }
+
+            private static string GetProjectToolRoot()
+            {
                 return Path.Combine(
                     Application.dataPath,
                     "toshi.VLiveKit",
                     "VideoRack",
                     "Tools",
                     "FFmpeg");
+            }
+
+            private static string EnsureCachedExecutable(string payloadPath, string platformDirectory, string executableName)
+            {
+                var projectRoot = Path.GetFullPath(Path.Combine(Application.dataPath, ".."));
+                var cachedPath = Path.Combine(
+                    projectRoot,
+                    "Library",
+                    "VLiveKit",
+                    "VideoRack",
+                    "FFmpeg",
+                    platformDirectory,
+                    executableName);
+
+                var payloadInfo = new FileInfo(payloadPath);
+                var cachedInfo = new FileInfo(cachedPath);
+                if (cachedInfo.Exists && cachedInfo.Length == payloadInfo.Length)
+                    return cachedPath;
+
+                Directory.CreateDirectory(Path.GetDirectoryName(cachedPath));
+                File.Copy(payloadPath, cachedPath, true);
+                return cachedPath;
             }
         }
     }

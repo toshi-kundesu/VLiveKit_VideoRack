@@ -2,5 +2,7 @@
 .codex-npm-cache/
 Tools/FFmpeg/macOS/ffmpeg
 Tools/FFmpeg/Linux/ffmpeg
-!Tools/FFmpeg/Windows/ffmpeg.exe
-!Tools/FFmpeg/Windows/ffmpeg.exe.meta
+Tools/FFmpeg/Windows/ffmpeg.exe
+Tools/FFmpeg/Windows/ffmpeg.exe.meta
+!Tools/FFmpeg/Windows/ffmpeg.exe.bytes
+!Tools/FFmpeg/Windows/ffmpeg.exe.bytes.meta
