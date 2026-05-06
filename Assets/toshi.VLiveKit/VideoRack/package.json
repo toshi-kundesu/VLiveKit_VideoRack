@@ -1,7 +1,7 @@
 ﻿{
     "name":  "com.toshi.vlivekit.videorack",
     "displayName":  "VLiveKit VideoRack",
-    "version":  "0.1.9",
+    "version":  "0.1.10",
     "unity":  "2022.3",
     "description":  "Video preparation tools for VLiveKit.",
     "author":  {
@@ -29,8 +29,10 @@
                   "Tools/FFmpeg/Windows/GPL-3.0.txt.meta",
                   "Tools/FFmpeg/Windows/README.txt",
                   "Tools/FFmpeg/Windows/README.txt.meta",
-                  "Tools/FFmpeg/Windows/ffmpeg.exe.bytes",
-                  "Tools/FFmpeg/Windows/ffmpeg.exe.bytes.meta",
+                  "Tools/FFmpeg/Windows/ffmpeg.exe.part001",
+                  "Tools/FFmpeg/Windows/ffmpeg.exe.part001.meta",
+                  "Tools/FFmpeg/Windows/ffmpeg.exe.part002",
+                  "Tools/FFmpeg/Windows/ffmpeg.exe.part002.meta",
                   "ThirdPartyNotices/",
                   "ThirdPartyNotices.meta",
                   "README.md",

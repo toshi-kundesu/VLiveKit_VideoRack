@@ -346,6 +346,10 @@ namespace VLiveKit.VideoRack.Editor
                     var payloadPath = packageExecutablePath + ".bytes";
                     if (File.Exists(payloadPath))
                         return EnsureCachedExecutable(payloadPath, platformDirectory, executableName);
+
+                    var payloadPartPaths = GetPayloadPartPaths(packageExecutablePath);
+                    if (payloadPartPaths.Length > 0)
+                        return EnsureCachedExecutable(payloadPartPaths, platformDirectory, executableName);
                 }
 
                 var projectExecutablePath = Path.Combine(GetProjectToolRoot(), platformDirectory, executableName);
@@ -382,17 +386,8 @@ namespace VLiveKit.VideoRack.Editor
 
             private static string EnsureCachedExecutable(string payloadPath, string platformDirectory, string executableName)
             {
-                var projectRoot = Path.GetFullPath(Path.Combine(Application.dataPath, ".."));
-                var cachedPath = Path.Combine(
-                    projectRoot,
-                    "Library",
-                    "VLiveKit",
-                    "VideoRack",
-                    "FFmpeg",
-                    platformDirectory,
-                    executableName);
-
                 var payloadInfo = new FileInfo(payloadPath);
+                var cachedPath = GetCachedExecutablePath(platformDirectory, executableName);
                 var cachedInfo = new FileInfo(cachedPath);
                 if (cachedInfo.Exists && cachedInfo.Length == payloadInfo.Length)
                     return cachedPath;
@@ -400,6 +395,55 @@ namespace VLiveKit.VideoRack.Editor
                 Directory.CreateDirectory(Path.GetDirectoryName(cachedPath));
                 File.Copy(payloadPath, cachedPath, true);
                 return cachedPath;
+            }
+
+            private static string EnsureCachedExecutable(string[] payloadPartPaths, string platformDirectory, string executableName)
+            {
+                var payloadLength = 0L;
+                foreach (var payloadPartPath in payloadPartPaths)
+                    payloadLength += new FileInfo(payloadPartPath).Length;
+
+                var cachedPath = GetCachedExecutablePath(platformDirectory, executableName);
+                var cachedInfo = new FileInfo(cachedPath);
+                if (cachedInfo.Exists && cachedInfo.Length == payloadLength)
+                    return cachedPath;
+
+                Directory.CreateDirectory(Path.GetDirectoryName(cachedPath));
+                using (var output = File.Open(cachedPath, FileMode.Create, FileAccess.Write))
+                {
+                    foreach (var payloadPartPath in payloadPartPaths)
+                    {
+                        using (var input = File.OpenRead(payloadPartPath))
+                            input.CopyTo(output);
+                    }
+                }
+
+                return cachedPath;
+            }
+
+            private static string[] GetPayloadPartPaths(string packageExecutablePath)
+            {
+                var directory = Path.GetDirectoryName(packageExecutablePath);
+                var fileName = Path.GetFileName(packageExecutablePath);
+                if (string.IsNullOrEmpty(directory) || string.IsNullOrEmpty(fileName))
+                    return Array.Empty<string>();
+
+                var payloadPartPaths = Directory.GetFiles(directory, fileName + ".part*");
+                Array.Sort(payloadPartPaths, StringComparer.Ordinal);
+                return payloadPartPaths;
+            }
+
+            private static string GetCachedExecutablePath(string platformDirectory, string executableName)
+            {
+                var projectRoot = Path.GetFullPath(Path.Combine(Application.dataPath, ".."));
+                return Path.Combine(
+                    projectRoot,
+                    "Library",
+                    "VLiveKit",
+                    "VideoRack",
+                    "FFmpeg",
+                    platformDirectory,
+                    executableName);
             }
         }
     }
