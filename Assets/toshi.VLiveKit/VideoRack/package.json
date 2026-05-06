@@ -1,7 +1,7 @@
 ﻿{
     "name":  "com.toshi.vlivekit.videorack",
     "displayName":  "VLiveKit VideoRack",
-    "version":  "0.1.7",
+    "version":  "0.1.8",
     "unity":  "2022.3",
     "description":  "Video preparation tools for VLiveKit.",
     "author":  {
@@ -14,8 +14,11 @@
     "license":  "Unlicense",
     "files":  [
                   "Editor/",
+                  "Editor.meta",
                   "Tools/",
+                  "Tools.meta",
                   "ThirdPartyNotices/",
+                  "ThirdPartyNotices.meta",
                   "README.md",
                   "README.md.meta",
                   "package.json.meta",
