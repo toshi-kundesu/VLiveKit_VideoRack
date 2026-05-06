@@ -4,7 +4,6 @@ using System.Diagnostics;
 using System.IO;
 using System.Text;
 using UnityEditor;
-using UnityEditor.PackageManager;
 using UnityEngine;
 using Debug = UnityEngine.Debug;
 
@@ -313,7 +312,7 @@ namespace VLiveKit.VideoRack.Editor
 
             private static string GetToolRoot()
             {
-                var packageInfo = PackageInfo.FindForAssembly(typeof(HapConverterWindow).Assembly);
+                var packageInfo = UnityEditor.PackageManager.PackageInfo.FindForAssembly(typeof(HapConverterWindow).Assembly);
                 if (packageInfo != null && !string.IsNullOrEmpty(packageInfo.resolvedPath))
                 {
                     var packageToolRoot = Path.Combine(packageInfo.resolvedPath, "Tools", "FFmpeg");
