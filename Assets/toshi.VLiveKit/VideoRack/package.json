@@ -1,7 +1,7 @@
 ﻿{
     "name":  "com.toshi.vlivekit.videorack",
     "displayName":  "VLiveKit VideoRack",
-    "version":  "0.1.5",
+    "version":  "0.1.6",
     "unity":  "2022.3",
     "description":  "Video preparation tools for VLiveKit.",
     "author":  {
@@ -12,6 +12,16 @@
                        "url":  "git+https://github.com/toshi-kundesu/VLiveKit_VideoRack.git"
                    },
     "license":  "Unlicense",
+    "files":  [
+                  "Editor/",
+                  "Tools/",
+                  "ThirdPartyNotices/",
+                  "README.md",
+                  "README.md.meta",
+                  "package.json.meta",
+                  "Tools/FFmpeg/Windows/ffmpeg.exe",
+                  "Tools/FFmpeg/Windows/ffmpeg.exe.meta"
+              ],
     "dependencies":  {
 
                      }
