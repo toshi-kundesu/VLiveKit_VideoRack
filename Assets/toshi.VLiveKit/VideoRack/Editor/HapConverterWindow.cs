@@ -22,15 +22,34 @@ namespace VLiveKit.VideoRack.Editor
 
         private string inputPath = string.Empty;
         private string outputPath = string.Empty;
+        private OperationMode operationMode = OperationMode.Hap;
         private int presetIndex;
         private int chunks = 1;
+        private bool resizeEnabled;
+        private int outputWidth = 1920;
+        private int outputHeight = 1080;
+        private bool fpsEnabled;
+        private float outputFps = 30f;
+        private bool trimEnabled;
+        private string trimStart = string.Empty;
+        private string trimDuration = string.Empty;
+        private AudioMode audioMode = AudioMode.Aac192;
+        private bool advancedOpen;
+        private string extraInputArguments = string.Empty;
+        private string extraOutputArguments = string.Empty;
         private bool overwrite = true;
         private bool revealOnComplete = true;
         private bool isConverting;
         private bool outputPathWasEdited;
         private Process process;
         private readonly StringBuilder log = new StringBuilder();
+        private Vector2 mainScroll;
         private Vector2 logScroll;
+        private GUIStyle headerStyle;
+        private GUIStyle panelStyle;
+        private GUIStyle sectionTitleStyle;
+        private GUIStyle statusStyle;
+        private GUIStyle miniHintStyle;
 
         [MenuItem("toshi/VLiveKit/VideoRack/HAP Converter")]
         public static void Open()
@@ -40,73 +59,129 @@ namespace VLiveKit.VideoRack.Editor
 
         private void OnGUI()
         {
-            EditorGUILayout.LabelField("HAP Converter", EditorStyles.boldLabel);
-            EditorGUILayout.Space();
+            InitializeStyles();
 
-            using (new EditorGUILayout.HorizontalScope())
+            mainScroll = EditorGUILayout.BeginScrollView(mainScroll);
+            DrawHeader();
+
+            using (new EditorGUILayout.VerticalScope(panelStyle))
             {
-                EditorGUILayout.TextField("Input", inputPath);
-                if (GUILayout.Button("Select", GUILayout.Width(80)))
-                    SelectInput();
+                DrawSectionTitle("SOURCE");
+                DrawPathRow("Input", inputPath, "Select", SelectInput);
+                using (new EditorGUI.DisabledScope(string.IsNullOrEmpty(inputPath)))
+                    DrawPathRow("Output", outputPath, "Change", SelectOutput);
             }
 
-            using (new EditorGUILayout.HorizontalScope())
+            using (new EditorGUILayout.VerticalScope(panelStyle))
             {
-                EditorGUILayout.TextField("Output", outputPath);
-                using (new EditorGUI.DisabledScope(string.IsNullOrEmpty(inputPath)))
+                DrawSectionTitle("MODE");
+
+                EditorGUI.BeginChangeCheck();
+                operationMode = (OperationMode)EditorGUILayout.Popup(
+                    new GUIContent("Operation", "Choose what ffmpeg should do."),
+                    (int)operationMode,
+                    GetOperationNames());
+                if (EditorGUI.EndChangeCheck() && !outputPathWasEdited && !string.IsNullOrEmpty(inputPath))
+                    outputPath = BuildDefaultOutputPath(inputPath, operationMode, Presets[presetIndex]);
+
+                DrawHint(GetOperationHelp(operationMode));
+
+                using (new EditorGUI.DisabledScope(operationMode != OperationMode.Hap))
                 {
-                    if (GUILayout.Button("Change", GUILayout.Width(80)))
-                        SelectOutput();
+                    EditorGUI.BeginChangeCheck();
+                    presetIndex = EditorGUILayout.Popup(
+                        new GUIContent("HAP Preset", "Choose the HAP variant written by ffmpeg."),
+                        presetIndex,
+                        GetPresetNames());
+                    if (EditorGUI.EndChangeCheck() && !outputPathWasEdited && !string.IsNullOrEmpty(inputPath))
+                        outputPath = BuildDefaultOutputPath(inputPath, operationMode, Presets[presetIndex]);
+
+                    if (operationMode == OperationMode.Hap)
+                    {
+                        DrawHint(GetPresetHelp(Presets[presetIndex]));
+                        chunks = EditorGUILayout.IntSlider(
+                            new GUIContent("Chunks", "Number of HAP texture chunks per frame. Use 1 first; increase for high-resolution playback tests."),
+                            chunks,
+                            1,
+                            64);
+                        DrawHint("Chunks split each video frame for HAP playback. 1 is the safest default. Try 4 or 8 for heavy high-resolution clips if playback stutters.");
+                    }
                 }
             }
 
-            EditorGUILayout.Space();
-
-            EditorGUI.BeginChangeCheck();
-            presetIndex = EditorGUILayout.Popup(
-                new GUIContent("Preset", "Choose the HAP variant written by ffmpeg."),
-                presetIndex,
-                GetPresetNames());
-            if (EditorGUI.EndChangeCheck() && !outputPathWasEdited && !string.IsNullOrEmpty(inputPath))
-                outputPath = BuildDefaultOutputPath(inputPath, Presets[presetIndex]);
-
-            EditorGUILayout.HelpBox(GetPresetHelp(Presets[presetIndex]), MessageType.None);
-
-            chunks = EditorGUILayout.IntSlider(
-                new GUIContent("Chunks", "Number of HAP texture chunks per frame. Use 1 first; increase for high-resolution playback tests."),
-                chunks,
-                1,
-                64);
-            EditorGUILayout.HelpBox("Chunks split each video frame for HAP playback. 1 is the safest default. Try 4 or 8 for heavy high-resolution clips if playback stutters.", MessageType.None);
-
-            overwrite = EditorGUILayout.Toggle("Overwrite Output", overwrite);
-            revealOnComplete = EditorGUILayout.Toggle("Reveal On Complete", revealOnComplete);
-
-            var ffmpegPath = FfmpegLocator.GetExecutablePath();
-            using (new EditorGUI.DisabledScope(true))
-                EditorGUILayout.TextField("ffmpeg", ffmpegPath);
-
-            EditorGUILayout.Space();
-
-            using (new EditorGUI.DisabledScope(isConverting || string.IsNullOrEmpty(inputPath)))
+            using (new EditorGUILayout.VerticalScope(panelStyle))
             {
-                if (GUILayout.Button("Convert to HAP", GUILayout.Height(28)))
-                    StartConvert();
+                DrawSectionTitle("FFMPEG PROCESSING");
+
+                resizeEnabled = EditorGUILayout.ToggleLeft(new GUIContent("Resize", "Adds a scale filter before HAP encoding."), resizeEnabled);
+                using (new EditorGUI.DisabledScope(!resizeEnabled))
+                using (new EditorGUILayout.HorizontalScope())
+                {
+                    EditorGUILayout.PrefixLabel("Size");
+                    outputWidth = EditorGUILayout.IntField(outputWidth, GUILayout.MinWidth(70));
+                    GUILayout.Label("x", GUILayout.Width(12));
+                    outputHeight = EditorGUILayout.IntField(outputHeight, GUILayout.MinWidth(70));
+                    GUILayout.FlexibleSpace();
+                }
+
+                fpsEnabled = EditorGUILayout.ToggleLeft(new GUIContent("Conform FPS", "Adds an fps filter. Useful when playback systems expect a fixed frame rate."), fpsEnabled);
+                using (new EditorGUI.DisabledScope(!fpsEnabled))
+                    outputFps = EditorGUILayout.FloatField("FPS", outputFps);
+
+                trimEnabled = EditorGUILayout.ToggleLeft(new GUIContent("Trim", "Uses ffmpeg -ss and -t before decoding."), trimEnabled);
+                using (new EditorGUI.DisabledScope(!trimEnabled))
+                {
+                    trimStart = EditorGUILayout.TextField(new GUIContent("Start", "Examples: 3.5, 00:00:03.500"), trimStart);
+                    trimDuration = EditorGUILayout.TextField(new GUIContent("Duration", "Examples: 10, 00:00:10.000"), trimDuration);
+                }
+
+                using (new EditorGUI.DisabledScope(operationMode == OperationMode.ExtractWav || operationMode == OperationMode.RemuxMov))
+                    audioMode = (AudioMode)EditorGUILayout.EnumPopup(new GUIContent("Audio", "Choose how audio is written to the output movie."), audioMode);
             }
 
-            if (isConverting)
+            using (new EditorGUILayout.VerticalScope(panelStyle))
             {
-                EditorGUILayout.HelpBox("Converting. Unity remains usable while ffmpeg is running.", MessageType.Info);
+                DrawSectionTitle("OUTPUT");
+                overwrite = EditorGUILayout.Toggle("Overwrite Output", overwrite);
+                revealOnComplete = EditorGUILayout.Toggle("Reveal On Complete", revealOnComplete);
 
-                if (GUILayout.Button("Stop Conversion"))
-                    StopConversion();
+                advancedOpen = EditorGUILayout.Foldout(advancedOpen, "Advanced ffmpeg arguments", true);
+                if (advancedOpen)
+                {
+                    extraInputArguments = EditorGUILayout.TextField(new GUIContent("Before -i", "Raw ffmpeg args inserted before the input path."), extraInputArguments);
+                    extraOutputArguments = EditorGUILayout.TextField(new GUIContent("Before output", "Raw ffmpeg args inserted before the output path."), extraOutputArguments);
+                    DrawHint("Advanced arguments are passed directly to ffmpeg. Keep them empty unless you need a specific ffmpeg option.");
+                }
+
+                var ffmpegPath = FfmpegLocator.GetExecutablePath();
+                using (new EditorGUI.DisabledScope(true))
+                    EditorGUILayout.TextField("ffmpeg", ffmpegPath);
+
+                GUILayout.Space(6);
+                using (new EditorGUI.DisabledScope(isConverting || string.IsNullOrEmpty(inputPath)))
+                {
+                    if (GUILayout.Button(GetActionLabel(operationMode), GUILayout.Height(32)))
+                        StartConvert();
+                }
+
+                if (isConverting)
+                {
+                    DrawHint("ON AIR: ffmpeg is converting. Unity remains usable while the process runs.");
+
+                    if (GUILayout.Button("STOP CONVERSION"))
+                        StopConversion();
+                }
             }
 
-            EditorGUILayout.Space();
-            EditorGUILayout.LabelField("Log", EditorStyles.boldLabel);
+            using (new EditorGUILayout.VerticalScope(panelStyle))
+            {
+                DrawSectionTitle("LOG");
 
-            logScroll = EditorGUILayout.BeginScrollView(logScroll, GUILayout.MinHeight(180));
-            EditorGUILayout.TextArea(log.ToString(), GUILayout.ExpandHeight(true));
+                logScroll = EditorGUILayout.BeginScrollView(logScroll, GUILayout.MinHeight(180));
+                EditorGUILayout.TextArea(log.ToString(), GUILayout.ExpandHeight(true));
+                EditorGUILayout.EndScrollView();
+            }
+
             EditorGUILayout.EndScrollView();
         }
 
@@ -117,7 +192,7 @@ namespace VLiveKit.VideoRack.Editor
                 return;
 
             inputPath = path;
-            outputPath = BuildDefaultOutputPath(path, Presets[presetIndex]);
+            outputPath = BuildDefaultOutputPath(path, operationMode, Presets[presetIndex]);
             outputPathWasEdited = false;
         }
 
@@ -155,14 +230,26 @@ namespace VLiveKit.VideoRack.Editor
             }
 
             if (string.IsNullOrEmpty(outputPath))
-                outputPath = BuildDefaultOutputPath(inputPath, Presets[presetIndex]);
+                outputPath = BuildDefaultOutputPath(inputPath, operationMode, Presets[presetIndex]);
 
             var preset = Presets[presetIndex];
-            var arguments = BuildArguments(inputPath, outputPath, preset, chunks, overwrite);
+            var options = new FfmpegOptions(
+                resizeEnabled,
+                outputWidth,
+                outputHeight,
+                fpsEnabled,
+                outputFps,
+                trimEnabled,
+                trimStart,
+                trimDuration,
+                audioMode,
+                extraInputArguments,
+                extraOutputArguments);
+            var arguments = BuildArguments(inputPath, outputPath, operationMode, preset, chunks, overwrite, options);
 
             isConverting = true;
             log.Length = 0;
-            AppendLog($"Start HAP Convert\nffmpeg: {ffmpegPath}\nargs: {arguments}\n\n");
+            AppendLog($"Start {GetOperationDisplayName(operationMode)}\nffmpeg: {ffmpegPath}\nargs: {arguments}\n\n");
 
             process = new Process();
             process.StartInfo.FileName = ffmpegPath;
@@ -265,17 +352,200 @@ namespace VLiveKit.VideoRack.Editor
             log.Append(text);
         }
 
-        private static string BuildDefaultOutputPath(string sourcePath, HapPreset preset)
+        private static string BuildDefaultOutputPath(string sourcePath, OperationMode operation, HapPreset preset)
         {
             var directory = Path.GetDirectoryName(sourcePath);
             var name = Path.GetFileNameWithoutExtension(sourcePath);
-            return Path.Combine(directory, name + preset.DefaultSuffix);
+            switch (operation)
+            {
+                case OperationMode.Hap:
+                    return Path.Combine(directory, name + preset.DefaultSuffix);
+                case OperationMode.H264Mp4:
+                    return Path.Combine(directory, name + "_H264.mp4");
+                case OperationMode.H265Mp4:
+                    return Path.Combine(directory, name + "_H265.mp4");
+                case OperationMode.ProResMov:
+                    return Path.Combine(directory, name + "_ProRes.mov");
+                case OperationMode.ExtractWav:
+                    return Path.Combine(directory, name + "_Audio.wav");
+                case OperationMode.RemuxMov:
+                    return Path.Combine(directory, name + "_Remux.mov");
+                case OperationMode.Custom:
+                    return Path.Combine(directory, name + "_FFmpeg.mov");
+                default:
+                    return Path.Combine(directory, name + "_Output.mov");
+            }
         }
 
-        private static string BuildArguments(string input, string output, HapPreset preset, int chunks, bool overwriteOutput)
+        private void InitializeStyles()
+        {
+            if (headerStyle != null)
+                return;
+
+            headerStyle = new GUIStyle(EditorStyles.boldLabel)
+            {
+                fontSize = 18,
+                normal = { textColor = new Color(0.86f, 0.92f, 0.94f) },
+                margin = new RectOffset(0, 0, 4, 2)
+            };
+
+            panelStyle = new GUIStyle(EditorStyles.helpBox)
+            {
+                padding = new RectOffset(10, 10, 8, 10),
+                margin = new RectOffset(0, 0, 5, 6)
+            };
+
+            sectionTitleStyle = new GUIStyle(EditorStyles.miniBoldLabel)
+            {
+                normal = { textColor = new Color(0.2f, 0.84f, 0.94f) }
+            };
+
+            statusStyle = new GUIStyle(EditorStyles.miniBoldLabel)
+            {
+                alignment = TextAnchor.MiddleRight,
+                normal = { textColor = new Color(0.95f, 0.38f, 0.18f) }
+            };
+
+            miniHintStyle = new GUIStyle(EditorStyles.helpBox)
+            {
+                fontSize = 10,
+                wordWrap = true,
+                padding = new RectOffset(5, 5, 3, 3)
+            };
+        }
+
+        private void DrawHeader()
+        {
+            using (new EditorGUILayout.HorizontalScope())
+            {
+                EditorGUILayout.LabelField("VIDEO RACK / FFMPEG", headerStyle);
+                GUILayout.FlexibleSpace();
+                GUILayout.Label(isConverting ? "REC" : "STANDBY", statusStyle, GUILayout.Width(90));
+            }
+
+            var rect = GUILayoutUtility.GetRect(1, 3);
+            EditorGUI.DrawRect(rect, new Color(0.0f, 0.68f, 0.76f));
+            GUILayout.Space(3);
+        }
+
+        private void DrawSectionTitle(string title)
+        {
+            EditorGUILayout.LabelField(title, sectionTitleStyle);
+        }
+
+        private void DrawPathRow(string label, string path, string buttonLabel, Action buttonAction)
+        {
+            using (new EditorGUILayout.HorizontalScope())
+            {
+                EditorGUILayout.TextField(label, path);
+                if (GUILayout.Button(buttonLabel, GUILayout.Width(86)))
+                    buttonAction();
+            }
+        }
+
+        private void DrawHint(string text)
+        {
+            EditorGUILayout.LabelField(text, miniHintStyle);
+        }
+
+        private static string BuildArguments(string input, string output, OperationMode operation, HapPreset preset, int chunks, bool overwriteOutput, FfmpegOptions options)
         {
             var overwriteFlag = overwriteOutput ? "-y" : "-n";
-            return $"{overwriteFlag} -i {Quote(input)} -c:v hap -format {preset.FfmpegFormat} -chunks {chunks} {Quote(output)}";
+            var arguments = new StringBuilder();
+            arguments.Append(overwriteFlag);
+
+            if (options.TrimEnabled && !string.IsNullOrWhiteSpace(options.TrimStart))
+                arguments.Append(" -ss ").Append(Quote(options.TrimStart.Trim()));
+
+            if (options.TrimEnabled && !string.IsNullOrWhiteSpace(options.TrimDuration))
+                arguments.Append(" -t ").Append(Quote(options.TrimDuration.Trim()));
+
+            AppendRawArguments(arguments, options.ExtraInputArguments);
+            arguments.Append(" -i ").Append(Quote(input));
+
+            var filter = operation == OperationMode.ExtractWav || operation == OperationMode.RemuxMov
+                ? string.Empty
+                : BuildVideoFilter(options);
+            if (!string.IsNullOrEmpty(filter))
+                arguments.Append(" -vf ").Append(Quote(filter));
+
+            switch (operation)
+            {
+                case OperationMode.Hap:
+                    arguments.Append(" -c:v hap -format ").Append(preset.FfmpegFormat);
+                    arguments.Append(" -chunks ").Append(Mathf.Clamp(chunks, 1, 64));
+                    AppendAudioArguments(arguments, options.AudioMode);
+                    break;
+                case OperationMode.H264Mp4:
+                    arguments.Append(" -c:v libx264 -pix_fmt yuv420p -crf 18 -preset medium");
+                    AppendAudioArguments(arguments, options.AudioMode);
+                    break;
+                case OperationMode.H265Mp4:
+                    arguments.Append(" -c:v libx265 -pix_fmt yuv420p -crf 22 -preset medium");
+                    AppendAudioArguments(arguments, options.AudioMode);
+                    break;
+                case OperationMode.ProResMov:
+                    arguments.Append(" -c:v prores_ks -profile:v 3 -pix_fmt yuv422p10le");
+                    AppendAudioArguments(arguments, options.AudioMode);
+                    break;
+                case OperationMode.ExtractWav:
+                    arguments.Append(" -vn -c:a pcm_s16le");
+                    break;
+                case OperationMode.RemuxMov:
+                    arguments.Append(" -c copy");
+                    break;
+                case OperationMode.Custom:
+                    break;
+            }
+
+            AppendRawArguments(arguments, options.ExtraOutputArguments);
+            arguments.Append(" ").Append(Quote(output));
+            return arguments.ToString();
+        }
+
+        private static void AppendAudioArguments(StringBuilder arguments, AudioMode audioMode)
+        {
+            switch (audioMode)
+            {
+                case AudioMode.Copy:
+                    arguments.Append(" -c:a copy");
+                    break;
+                case AudioMode.Aac192:
+                    arguments.Append(" -c:a aac -b:a 192k");
+                    break;
+                case AudioMode.Remove:
+                    arguments.Append(" -an");
+                    break;
+            }
+        }
+
+        private static string BuildVideoFilter(FfmpegOptions options)
+        {
+            var filter = new StringBuilder();
+            if (options.ResizeEnabled)
+            {
+                var width = Mathf.Max(2, options.Width);
+                var height = Mathf.Max(2, options.Height);
+                filter.Append("scale=").Append(width).Append(":").Append(height);
+            }
+
+            if (options.FpsEnabled)
+            {
+                if (filter.Length > 0)
+                    filter.Append(",");
+
+                filter.Append("fps=").Append(Mathf.Max(1f, options.Fps).ToString("0.###", System.Globalization.CultureInfo.InvariantCulture));
+            }
+
+            return filter.ToString();
+        }
+
+        private static void AppendRawArguments(StringBuilder arguments, string rawArguments)
+        {
+            if (string.IsNullOrWhiteSpace(rawArguments))
+                return;
+
+            arguments.Append(" ").Append(rawArguments.Trim());
         }
 
         private static string Quote(string value)
@@ -290,6 +560,63 @@ namespace VLiveKit.VideoRack.Editor
                 names[i] = $"{Presets[i].Name} - {Presets[i].Description}";
 
             return names;
+        }
+
+        private static string[] GetOperationNames()
+        {
+            return new[]
+            {
+                "HAP Movie",
+                "H.264 MP4",
+                "H.265 MP4",
+                "ProRes MOV",
+                "Extract WAV",
+                "Remux MOV",
+                "Custom ffmpeg"
+            };
+        }
+
+        private static string GetOperationDisplayName(OperationMode operation)
+        {
+            return GetOperationNames()[(int)operation];
+        }
+
+        private static string GetActionLabel(OperationMode operation)
+        {
+            switch (operation)
+            {
+                case OperationMode.ExtractWav:
+                    return "EXTRACT AUDIO";
+                case OperationMode.RemuxMov:
+                    return "REMUX";
+                case OperationMode.Custom:
+                    return "RUN FFMPEG";
+                default:
+                    return "CONVERT";
+            }
+        }
+
+        private static string GetOperationHelp(OperationMode operation)
+        {
+            switch (operation)
+            {
+                case OperationMode.Hap:
+                    return "Creates a HAP .mov for media-server style playback and live visuals.";
+                case OperationMode.H264Mp4:
+                    return "Creates a compact H.264 .mp4 for review, upload, and general playback.";
+                case OperationMode.H265Mp4:
+                    return "Creates a smaller H.265 .mp4. Encoding is slower; playback compatibility varies.";
+                case OperationMode.ProResMov:
+                    return "Creates an edit-friendly ProRes .mov for handoff to NLEs and production pipelines.";
+                case OperationMode.ExtractWav:
+                    return "Extracts audio as uncompressed WAV.";
+                case OperationMode.RemuxMov:
+                    return "Rewraps streams without re-encoding. Fast, but only works when codecs fit the output container.";
+                case OperationMode.Custom:
+                    return "Runs ffmpeg with your advanced output arguments. Video/audio codec args are not added automatically.";
+                default:
+                    return string.Empty;
+            }
         }
 
         private static string GetPresetHelp(HapPreset preset)
@@ -318,6 +645,65 @@ namespace VLiveKit.VideoRack.Editor
                 FfmpegFormat = ffmpegFormat;
                 Description = description;
                 DefaultSuffix = defaultSuffix;
+            }
+        }
+
+        private enum AudioMode
+        {
+            Copy,
+            Aac192,
+            Remove
+        }
+
+        private enum OperationMode
+        {
+            Hap,
+            H264Mp4,
+            H265Mp4,
+            ProResMov,
+            ExtractWav,
+            RemuxMov,
+            Custom
+        }
+
+        private readonly struct FfmpegOptions
+        {
+            public readonly bool ResizeEnabled;
+            public readonly int Width;
+            public readonly int Height;
+            public readonly bool FpsEnabled;
+            public readonly float Fps;
+            public readonly bool TrimEnabled;
+            public readonly string TrimStart;
+            public readonly string TrimDuration;
+            public readonly AudioMode AudioMode;
+            public readonly string ExtraInputArguments;
+            public readonly string ExtraOutputArguments;
+
+            public FfmpegOptions(
+                bool resizeEnabled,
+                int width,
+                int height,
+                bool fpsEnabled,
+                float fps,
+                bool trimEnabled,
+                string trimStart,
+                string trimDuration,
+                AudioMode audioMode,
+                string extraInputArguments,
+                string extraOutputArguments)
+            {
+                ResizeEnabled = resizeEnabled;
+                Width = width;
+                Height = height;
+                FpsEnabled = fpsEnabled;
+                Fps = fps;
+                TrimEnabled = trimEnabled;
+                TrimStart = trimStart;
+                TrimDuration = trimDuration;
+                AudioMode = audioMode;
+                ExtraInputArguments = extraInputArguments;
+                ExtraOutputArguments = extraOutputArguments;
             }
         }
 
