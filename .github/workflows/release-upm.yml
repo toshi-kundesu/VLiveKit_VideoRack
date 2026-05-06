@@ -1,0 +1,322 @@
+﻿name: Release UPM Package
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag, for example v0.0.1"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+env:
+  PACKAGE_ROOT: Assets/toshi.VLiveKit/VideoRack
+  PACKAGE_WORKDIR: /tmp/upm-package
+
+jobs:
+  release:
+    name: Publish scoped registry package
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js for npm registry
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          registry-url: https://registry.npmjs.org
+
+      - name: Resolve release version
+        id: version
+        shell: bash
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            tag="${{ inputs.tag }}"
+          else
+            tag="${GITHUB_REF_NAME}"
+          fi
+
+          if [[ ! "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([-+][0-9A-Za-z.-]+)?$ ]]; then
+            echo "::error::Tag must look like v0.0.1 or v0.0.1-preview.1: $tag"
+            exit 1
+          fi
+
+          version="${tag#v}"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Prepare package contents
+        shell: bash
+        run: |
+          test -f "$PACKAGE_ROOT/package.json"
+
+          rm -rf "$PACKAGE_WORKDIR"
+          mkdir -p "$PACKAGE_WORKDIR"
+          cp -a "$PACKAGE_ROOT"/. "$PACKAGE_WORKDIR"/
+
+          package_name="$(node -e 'const fs = require("fs"); const path = process.env.PACKAGE_WORKDIR + "/package.json"; console.log(JSON.parse(fs.readFileSync(path, "utf8").replace(/^\uFEFF/, "")).name);')"
+
+          write_meta() {
+            local asset_path="$1"
+            local guid
+            guid="$(node -e 'const crypto = require("crypto"); console.log(crypto.createHash("md5").update(process.argv[1]).digest("hex"));' "$package_name:$asset_path")"
+            {
+              printf 'fileFormatVersion: 2\n'
+              printf 'guid: %s\n' "$guid"
+              printf 'DefaultImporter:\n'
+              printf '  externalObjects: {}\n'
+              printf '  userData:\n'
+              printf '  assetBundleName:\n'
+              printf '  assetBundleVariant:\n'
+            } > "$PACKAGE_WORKDIR/$asset_path.meta"
+          }
+
+          if [[ -f README.md ]]; then
+            cp README.md "$PACKAGE_WORKDIR/README.md"
+            write_meta README.md
+          fi
+
+          if [[ -f LICENSE ]]; then
+            cp LICENSE "$PACKAGE_WORKDIR/LICENSE"
+            write_meta LICENSE
+          fi
+
+          if [[ -d "$PACKAGE_WORKDIR/Samples" ]]; then
+            rm -rf "$PACKAGE_WORKDIR/Samples~"
+            mv "$PACKAGE_WORKDIR/Samples" "$PACKAGE_WORKDIR/Samples~"
+            if [[ -f "$PACKAGE_WORKDIR/Samples.meta" ]]; then
+              mv "$PACKAGE_WORKDIR/Samples.meta" "$PACKAGE_WORKDIR/Samples~.meta"
+            fi
+          fi
+
+          node -e '
+            const fs = require("fs");
+            const path = process.env.PACKAGE_WORKDIR + "/package.json";
+            const packageJson = JSON.parse(fs.readFileSync(path, "utf8").replace(/^\uFEFF/, ""));
+            packageJson.version = process.env.RELEASE_VERSION;
+            fs.writeFileSync(path, JSON.stringify(packageJson, null, 2) + "\n");
+          '
+        env:
+          RELEASE_VERSION: ${{ steps.version.outputs.version }}
+
+      - name: Pack UPM tarball
+        id: pack
+        shell: bash
+        working-directory: ${{ env.PACKAGE_WORKDIR }}
+        run: |
+          npm pack --json > /tmp/npm-pack.json
+          tarball="$(node -e 'const fs = require("fs"); const pack = JSON.parse(fs.readFileSync("/tmp/npm-pack.json", "utf8")); console.log(pack[0].filename);')"
+          echo "tarball=$tarball" >> "$GITHUB_OUTPUT"
+          echo "tarball_path=$PACKAGE_WORKDIR/$tarball" >> "$GITHUB_OUTPUT"
+
+      - name: Publish to npm registry
+        shell: bash
+        run: |
+          if [[ -z "$NODE_AUTH_TOKEN" ]]; then
+            echo "::error::Missing NPM_TOKEN repository secret. Create an npm automation token and save it as NPM_TOKEN."
+            exit 1
+          fi
+
+          npm publish "${{ steps.pack.outputs.tarball_path }}" --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.tag }}
+          name: ${{ steps.version.outputs.tag }}
+          generate_release_notes: true
+          files: ${{ steps.pack.outputs.tarball_path }}
+  unitypackage:
+    name: Publish unitypackage
+    runs-on: [self-hosted, Windows]
+
+    defaults:
+      run:
+        shell: pwsh
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Resolve package info
+        id: package
+        run: |
+          if ("${{ github.event_name }}" -eq "workflow_dispatch") {
+            $tag = "${{ inputs.tag }}"
+          } else {
+            $tag = $env:GITHUB_REF_NAME
+          }
+
+          if ($tag -notmatch '^v(?<version>[0-9]+\.[0-9]+\.[0-9]+([-+][0-9A-Za-z.-]+)?)$') {
+            throw "Tag must look like v0.0.1 or v0.0.1-preview.1: $tag"
+          }
+
+          $version = $Matches.version
+          $packageJsonPath = Join-Path $env:PACKAGE_ROOT "package.json"
+          if (-not (Test-Path $packageJsonPath)) {
+            throw "package.json was not found at $packageJsonPath"
+          }
+
+          $packageJson = Get-Content $packageJsonPath -Raw | ConvertFrom-Json
+          $packageName = $packageJson.name
+          $displayName = if ($packageJson.displayName) { $packageJson.displayName } else { $packageName }
+          $safeName = $packageName -replace '[^A-Za-z0-9._-]', '-'
+          $distPath = Join-Path $env:GITHUB_WORKSPACE "dist"
+          $unityPackagePath = Join-Path $distPath "$safeName-$version.unitypackage"
+          $sha256Path = "$unityPackagePath.sha256"
+
+          New-Item -ItemType Directory -Force -Path $distPath | Out-Null
+
+          "tag=$tag" >> $env:GITHUB_OUTPUT
+          "version=$version" >> $env:GITHUB_OUTPUT
+          "package_name=$packageName" >> $env:GITHUB_OUTPUT
+          "display_name=$displayName" >> $env:GITHUB_OUTPUT
+          "unitypackage_path=$unityPackagePath" >> $env:GITHUB_OUTPUT
+          "sha256_path=$sha256Path" >> $env:GITHUB_OUTPUT
+          "prerelease=$($version -match '-')" >> $env:GITHUB_OUTPUT
+
+      - name: Install unitypackage exporter
+        run: |
+          $editorPath = Join-Path "Assets" "Editor"
+          New-Item -ItemType Directory -Force -Path $editorPath | Out-Null
+          @'
+          using System;
+          using System.IO;
+          using UnityEditor;
+          using UnityEngine;
+
+          namespace VLiveKit.Release
+          {
+              public static class UnityPackageExporter
+              {
+                  public static void Export()
+                  {
+                      var sourcePath = GetRequiredArgument("-exportPackageSourcePath").Replace('\\', '/').TrimEnd('/');
+                      var outputPath = GetRequiredArgument("-exportPackageOutputPath");
+                      var includeDependencies = GetBoolArgument("-exportPackageIncludeDependencies", false);
+
+                      if (!AssetDatabase.IsValidFolder(sourcePath) && AssetDatabase.LoadAssetAtPath<UnityEngine.Object>(sourcePath) == null)
+                      {
+                          throw new ArgumentException($"Export source path was not found in the AssetDatabase: {sourcePath}");
+                      }
+
+                      var outputDirectory = Path.GetDirectoryName(outputPath);
+                      if (!string.IsNullOrEmpty(outputDirectory))
+                      {
+                          Directory.CreateDirectory(outputDirectory);
+                      }
+
+                      var options = ExportPackageOptions.Recurse;
+                      if (includeDependencies)
+                      {
+                          options |= ExportPackageOptions.IncludeDependencies;
+                      }
+
+                      Debug.Log($"Exporting unitypackage: {sourcePath} -> {outputPath}");
+                      AssetDatabase.ExportPackage(sourcePath, outputPath, options);
+
+                      if (!File.Exists(outputPath))
+                      {
+                          throw new FileNotFoundException($"Unitypackage was not created: {outputPath}");
+                      }
+                  }
+
+                  private static string GetRequiredArgument(string name)
+                  {
+                      var value = GetArgument(name);
+                      if (string.IsNullOrWhiteSpace(value))
+                      {
+                          throw new ArgumentException($"Missing required argument: {name}");
+                      }
+
+                      return value;
+                  }
+
+                  private static bool GetBoolArgument(string name, bool defaultValue)
+                  {
+                      var value = GetArgument(name);
+                      return string.IsNullOrWhiteSpace(value) ? defaultValue : bool.Parse(value);
+                  }
+
+                  private static string GetArgument(string name)
+                  {
+                      var args = Environment.GetCommandLineArgs();
+                      for (var i = 0; i < args.Length - 1; i++)
+                      {
+                          if (args[i] == name)
+                          {
+                              return args[i + 1];
+                          }
+                      }
+
+                      return null;
+                  }
+              }
+          }
+          '@ | Set-Content (Join-Path $editorPath "VLiveKitUnityPackageExporter.cs") -Encoding UTF8
+
+      - name: Resolve Unity editor
+        id: unity
+        run: |
+          if ($env:UNITY_EDITOR_PATH) {
+            $unityPath = $env:UNITY_EDITOR_PATH
+          } else {
+            $projectVersion = (Get-Content "ProjectSettings/ProjectVersion.txt" | Select-String "m_EditorVersion:").ToString().Split(":")[1].Trim()
+            $unityPath = "C:\Program Files\Unity\Hub\Editor\$projectVersion\Editor\Unity.exe"
+          }
+
+          if (-not (Test-Path $unityPath)) {
+            throw "Unity editor was not found. Set UNITY_EDITOR_PATH or install the project Unity version. Tried: $unityPath"
+          }
+
+          "unity_path=$unityPath" >> $env:GITHUB_OUTPUT
+
+      - name: Export unitypackage
+        run: |
+          $arguments = @(
+            "-batchmode",
+            "-quit",
+            "-nographics",
+            "-projectPath",
+            $env:GITHUB_WORKSPACE,
+            "-executeMethod",
+            "VLiveKit.Release.UnityPackageExporter.Export",
+            "-exportPackageSourcePath",
+            $env:PACKAGE_ROOT,
+            "-exportPackageOutputPath",
+            "${{ steps.package.outputs.unitypackage_path }}",
+            "-exportPackageIncludeDependencies",
+            "false"
+          )
+
+          $process = Start-Process -FilePath "${{ steps.unity.outputs.unity_path }}" -ArgumentList $arguments -Wait -PassThru -WindowStyle Hidden
+          if ($process.ExitCode -ne 0) {
+            throw "Unity export failed with exit code $($process.ExitCode)"
+          }
+
+      - name: Create checksum
+        run: |
+          $hash = Get-FileHash "${{ steps.package.outputs.unitypackage_path }}" -Algorithm SHA256
+          "$($hash.Hash.ToLowerInvariant())  $(Split-Path "${{ steps.package.outputs.unitypackage_path }}" -Leaf)" | Set-Content "${{ steps.package.outputs.sha256_path }}" -NoNewline
+
+      - name: Attach unitypackage to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.package.outputs.tag }}
+          name: ${{ steps.package.outputs.tag }}
+          prerelease: ${{ steps.package.outputs.prerelease }}
+          generate_release_notes: true
+          files: |
+            ${{ steps.package.outputs.unitypackage_path }}
+            ${{ steps.package.outputs.sha256_path }}
+
+
