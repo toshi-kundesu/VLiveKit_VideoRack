@@ -77,6 +77,11 @@ mono_crash.*
 *.unitypackage.meta
 *.app
 
+# Bundled FFmpeg release binary is included in npm packages from local release
+# workspaces, but it is too large for normal GitHub blobs in this repository.
+/Assets/toshi.VLiveKit/VideoRack/Tools/FFmpeg/Windows/ffmpeg.exe
+/Assets/toshi.VLiveKit/VideoRack/Tools/FFmpeg/Windows/ffmpeg.exe.meta
+
 # Crashlytics generated file
 crashlytics-build.properties
 

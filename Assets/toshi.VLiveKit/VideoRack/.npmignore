@@ -1,5 +1,4 @@
 ﻿*.tgz
 .codex-npm-cache/
-Tools/FFmpeg/Windows/ffmpeg.exe
 Tools/FFmpeg/macOS/ffmpeg
 Tools/FFmpeg/Linux/ffmpeg

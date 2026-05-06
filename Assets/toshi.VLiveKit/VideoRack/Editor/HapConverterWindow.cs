@@ -4,6 +4,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Text;
 using UnityEditor;
+using UnityEditor.PackageManager;
 using UnityEngine;
 using Debug = UnityEngine.Debug;
 
@@ -32,7 +33,7 @@ namespace VLiveKit.VideoRack.Editor
         private readonly StringBuilder log = new StringBuilder();
         private Vector2 logScroll;
 
-        [MenuItem("Tools/VLiveKit/VideoRack/HAP Converter")]
+        [MenuItem("toshi/VLiveKit/VideoRack/HAP Converter")]
         public static void Open()
         {
             GetWindow<HapConverterWindow>(WindowTitle);
@@ -312,6 +313,14 @@ namespace VLiveKit.VideoRack.Editor
 
             private static string GetToolRoot()
             {
+                var packageInfo = PackageInfo.FindForAssembly(typeof(HapConverterWindow).Assembly);
+                if (packageInfo != null && !string.IsNullOrEmpty(packageInfo.resolvedPath))
+                {
+                    var packageToolRoot = Path.Combine(packageInfo.resolvedPath, "Tools", "FFmpeg");
+                    if (Directory.Exists(packageToolRoot))
+                        return packageToolRoot;
+                }
+
                 return Path.Combine(
                     Application.dataPath,
                     "toshi.VLiveKit",

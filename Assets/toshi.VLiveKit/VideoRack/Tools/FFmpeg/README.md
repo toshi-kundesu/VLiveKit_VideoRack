@@ -1,15 +1,38 @@
-# FFmpeg Placement
+# FFmpeg
 
-This repository intentionally does not include ffmpeg binaries.
+This package can include FFmpeg as a third-party command line tool for the
+HAP Converter editor window.
 
-Place your builds at these paths:
+FFmpeg is executed as a separate process. It is not linked into the VLiveKit
+VideoRack assemblies.
+
+## Platform Paths
 
 ```text
-Assets/toshi.VLiveKit/VideoRack/Tools/FFmpeg/Windows/ffmpeg.exe
-Assets/toshi.VLiveKit/VideoRack/Tools/FFmpeg/macOS/ffmpeg
-Assets/toshi.VLiveKit/VideoRack/Tools/FFmpeg/Linux/ffmpeg
+Tools/FFmpeg/Windows/ffmpeg.exe
+Tools/FFmpeg/macOS/ffmpeg
+Tools/FFmpeg/Linux/ffmpeg
 ```
 
 The HAP Converter uses the platform-specific executable path automatically.
+If a package-local FFmpeg build is unavailable, the converter falls back to the
+legacy project-side path under `Assets/toshi.VLiveKit/VideoRack/Tools/FFmpeg`.
 
-When distributing ffmpeg with a project or package, check the license terms of the exact build you ship.
+## Windows Build
+
+The Windows binary currently bundled here is a gyan.dev FFmpeg GPLv3 full build.
+Keep these files together when distributing the package:
+
+```text
+Tools/FFmpeg/Windows/ffmpeg.exe
+Tools/FFmpeg/Windows/GPL-3.0.txt
+Tools/FFmpeg/Windows/README.txt
+ThirdPartyNotices/FFmpeg.md
+```
+
+`README.txt` is the upstream gyan.dev build readme and includes the exact
+FFmpeg version, build configuration, source commit, enabled components, and
+external library versions.
+
+Before distributing a release, make sure the corresponding source remains
+available for the exact binary you ship. See `ThirdPartyNotices/FFmpeg.md`.
