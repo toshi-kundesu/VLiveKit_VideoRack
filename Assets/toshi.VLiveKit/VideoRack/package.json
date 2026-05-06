@@ -1,16 +1,18 @@
 ﻿{
-  "name": "com.toshi.vlivekit.videorack",
-  "displayName": "VLiveKit VideoRack",
-  "version": "0.0.1",
-  "unity": "2022.3",
-  "description": "Video preparation tools for VLiveKit.",
-  "author": {
-    "name": "toshi"
-  },
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/toshi-kundesu/VLiveKit_VideoRack.git"
-  },
-  "license": "Unlicense",
-  "dependencies": {}
+    "name":  "com.toshi.vlivekit.videorack",
+    "displayName":  "VLiveKit VideoRack",
+    "version":  "0.1.0",
+    "unity":  "2022.3",
+    "description":  "Video preparation tools for VLiveKit.",
+    "author":  {
+                   "name":  "toshi"
+               },
+    "repository":  {
+                       "type":  "git",
+                       "url":  "git+https://github.com/toshi-kundesu/VLiveKit_VideoRack.git"
+                   },
+    "license":  "Unlicense",
+    "dependencies":  {
+
+                     }
 }
