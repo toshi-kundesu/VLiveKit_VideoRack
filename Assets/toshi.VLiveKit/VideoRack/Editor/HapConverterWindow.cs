@@ -63,11 +63,22 @@ namespace VLiveKit.VideoRack.Editor
             EditorGUILayout.Space();
 
             EditorGUI.BeginChangeCheck();
-            presetIndex = EditorGUILayout.Popup("Preset", presetIndex, GetPresetNames());
+            presetIndex = EditorGUILayout.Popup(
+                new GUIContent("Preset", "Choose the HAP variant written by ffmpeg."),
+                presetIndex,
+                GetPresetNames());
             if (EditorGUI.EndChangeCheck() && !outputPathWasEdited && !string.IsNullOrEmpty(inputPath))
                 outputPath = BuildDefaultOutputPath(inputPath, Presets[presetIndex]);
 
-            chunks = EditorGUILayout.IntSlider("Chunks", chunks, 1, 64);
+            EditorGUILayout.HelpBox(GetPresetHelp(Presets[presetIndex]), MessageType.None);
+
+            chunks = EditorGUILayout.IntSlider(
+                new GUIContent("Chunks", "Number of HAP texture chunks per frame. Use 1 first; increase for high-resolution playback tests."),
+                chunks,
+                1,
+                64);
+            EditorGUILayout.HelpBox("Chunks split each video frame for HAP playback. 1 is the safest default. Try 4 or 8 for heavy high-resolution clips if playback stutters.", MessageType.None);
+
             overwrite = EditorGUILayout.Toggle("Overwrite Output", overwrite);
             revealOnComplete = EditorGUILayout.Toggle("Reveal On Complete", revealOnComplete);
 
@@ -279,6 +290,19 @@ namespace VLiveKit.VideoRack.Editor
                 names[i] = $"{Presets[i].Name} - {Presets[i].Description}";
 
             return names;
+        }
+
+        private static string GetPresetHelp(HapPreset preset)
+        {
+            switch (preset.FfmpegFormat)
+            {
+                case "hap_alpha":
+                    return "HAP Alpha keeps transparency. Use it for keyed or alpha-channel clips. Files are larger than standard HAP.";
+                case "hap_q":
+                    return "HAP Q prioritizes image quality. Use it when gradients or fine details need to hold up, with larger files and heavier playback.";
+                default:
+                    return "HAP is the standard preset for opaque video. It is the best first choice for general playback.";
+            }
         }
 
         private readonly struct HapPreset
