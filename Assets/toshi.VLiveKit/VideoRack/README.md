@@ -5,7 +5,7 @@
 ## Package
 
 - Package name: `com.toshi.vlivekit.videorack`
-- Version: `0.0.1`
+- Version: `0.1.13`
 - Unity: 2022.3
 - Repository: https://github.com/toshi-kundesu/VLiveKit_VideoRack
 - Package root: `Assets/toshi.VLiveKit/VideoRack`
