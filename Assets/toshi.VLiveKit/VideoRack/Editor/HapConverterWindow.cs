@@ -428,7 +428,9 @@ namespace VLiveKit.VideoRack.Editor
                 if (string.IsNullOrEmpty(directory) || string.IsNullOrEmpty(fileName))
                     return Array.Empty<string>();
 
-                var payloadPartPaths = Directory.GetFiles(directory, fileName + ".part*");
+                var payloadPartPaths = Directory.GetFiles(directory, fileName + ".part*.bytes");
+                if (payloadPartPaths.Length == 0)
+                    payloadPartPaths = Directory.GetFiles(directory, fileName + ".part*");
                 Array.Sort(payloadPartPaths, StringComparer.Ordinal);
                 return payloadPartPaths;
             }

@@ -83,6 +83,10 @@ mono_crash.*
 /Assets/toshi.VLiveKit/VideoRack/Tools/FFmpeg/Windows/ffmpeg.exe.meta
 /Assets/toshi.VLiveKit/VideoRack/Tools/FFmpeg/Windows/ffmpeg.exe.bytes
 /Assets/toshi.VLiveKit/VideoRack/Tools/FFmpeg/Windows/ffmpeg.exe.bytes.meta
+/Assets/toshi.VLiveKit/VideoRack/Tools/FFmpeg/Windows/ffmpeg.exe.part001
+/Assets/toshi.VLiveKit/VideoRack/Tools/FFmpeg/Windows/ffmpeg.exe.part001.meta
+/Assets/toshi.VLiveKit/VideoRack/Tools/FFmpeg/Windows/ffmpeg.exe.part002
+/Assets/toshi.VLiveKit/VideoRack/Tools/FFmpeg/Windows/ffmpeg.exe.part002.meta
 
 # Crashlytics generated file
 crashlytics-build.properties
