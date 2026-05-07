@@ -38,6 +38,14 @@ VLiveKit sandbox では submodule として `Packages/VLiveKit_VideoRack` に配
 
 - ffmpeg を同梱して配布する場合は、その build の LGPL/GPL 条件を確認してください。
 
+## NDI Test Sender
+
+Open `toshi/VLiveKit/VideoRack/NDI Test Sender` to create a moving test-pattern
+RenderTexture and scene rig. When KlakNDI is available in the project, the tool
+also adds and configures `Klak.Ndi.NdiSender` with Texture capture. KlakNDI is
+treated as an optional project dependency; this package does not reference it
+directly.
+
 ## License
 
 この package 独自のコードと asset は repository の `LICENSE` に従います。third-party asset を含む場合は、それぞれの license / README を確認してください。

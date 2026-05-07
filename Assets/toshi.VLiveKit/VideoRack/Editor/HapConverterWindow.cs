@@ -39,12 +39,17 @@ namespace VLiveKit.VideoRack.Editor
         private string extraOutputArguments = string.Empty;
         private bool overwrite = true;
         private bool revealOnComplete = true;
+        private bool showFfmpegConsole;
         private bool isConverting;
         private bool outputPathWasEdited;
         private Process process;
         private readonly StringBuilder log = new StringBuilder();
         private Vector2 mainScroll;
         private Vector2 logScroll;
+        private double inputDurationSeconds = -1d;
+        private double progressSeconds;
+        private float conversionProgress;
+        private string progressLabel = "Waiting";
         private GUIStyle headerStyle;
         private GUIStyle panelStyle;
         private GUIStyle sectionTitleStyle;
@@ -149,6 +154,7 @@ namespace VLiveKit.VideoRack.Editor
                 DrawSectionTitle("OUTPUT");
                 overwrite = EditorGUILayout.Toggle("Overwrite Output", overwrite);
                 revealOnComplete = EditorGUILayout.Toggle("Reveal On Complete", revealOnComplete);
+                showFfmpegConsole = EditorGUILayout.Toggle(new GUIContent("Show FFmpeg Console", "Launch ffmpeg through a visible command prompt instead of only streaming output into the Unity log."), showFfmpegConsole);
 
                 advancedOpen = EditorGUILayout.Foldout(advancedOpen, "Advanced ffmpeg arguments", true);
                 if (advancedOpen)
@@ -172,6 +178,7 @@ namespace VLiveKit.VideoRack.Editor
                 if (isConverting)
                 {
                     DrawHint("ON AIR: ffmpeg is converting. Unity remains usable while the process runs.");
+                    DrawConversionProgress();
 
                     if (GUILayout.Button("STOP CONVERSION", GUILayout.Height(26)))
                         StopConversion();
@@ -253,38 +260,50 @@ namespace VLiveKit.VideoRack.Editor
             var arguments = BuildArguments(inputPath, outputPath, operationMode, preset, chunks, overwrite, options);
 
             isConverting = true;
+            inputDurationSeconds = -1d;
+            progressSeconds = 0d;
+            conversionProgress = 0f;
+            progressLabel = showFfmpegConsole ? "External console" : "Starting";
             log.Length = 0;
             AppendLog($"Start {GetOperationDisplayName(operationMode)}\nffmpeg: {ffmpegPath}\nargs: {arguments}\n\n");
 
             process = new Process();
-            process.StartInfo.FileName = ffmpegPath;
-            process.StartInfo.Arguments = arguments;
+            process.StartInfo.FileName = showFfmpegConsole ? "cmd.exe" : ffmpegPath;
+            process.StartInfo.Arguments = showFfmpegConsole ? BuildCmdArguments(ffmpegPath, arguments) : arguments;
             process.StartInfo.WorkingDirectory = Path.GetDirectoryName(ffmpegPath);
-            process.StartInfo.UseShellExecute = false;
-            process.StartInfo.CreateNoWindow = true;
-            process.StartInfo.RedirectStandardOutput = true;
-            process.StartInfo.RedirectStandardError = true;
+            process.StartInfo.UseShellExecute = showFfmpegConsole;
+            process.StartInfo.CreateNoWindow = !showFfmpegConsole;
+            process.StartInfo.RedirectStandardOutput = !showFfmpegConsole;
+            process.StartInfo.RedirectStandardError = !showFfmpegConsole;
             process.EnableRaisingEvents = true;
 
-            process.OutputDataReceived += (_, e) =>
+            if (!showFfmpegConsole)
             {
-                if (!string.IsNullOrEmpty(e.Data))
-                    AppendLogThreadSafe(e.Data);
-            };
+                process.OutputDataReceived += (_, e) =>
+                {
+                    if (!string.IsNullOrEmpty(e.Data))
+                        AppendLogThreadSafe(e.Data);
+                };
 
-            process.ErrorDataReceived += (_, e) =>
-            {
-                if (!string.IsNullOrEmpty(e.Data))
-                    AppendLogThreadSafe(e.Data);
-            };
+                process.ErrorDataReceived += (_, e) =>
+                {
+                    if (!string.IsNullOrEmpty(e.Data))
+                        AppendLogThreadSafe(e.Data);
+                };
+            }
 
             process.Exited += (_, _) => EditorApplication.delayCall += OnProcessExited;
 
             try
             {
                 process.Start();
-                process.BeginOutputReadLine();
-                process.BeginErrorReadLine();
+                if (showFfmpegConsole)
+                    AppendLog("FFmpeg is running in an external command prompt.\n");
+                else
+                {
+                    process.BeginOutputReadLine();
+                    process.BeginErrorReadLine();
+                }
             }
             catch (Exception e)
             {
@@ -306,12 +325,15 @@ namespace VLiveKit.VideoRack.Editor
 
             if (exitCode == 0)
             {
+                conversionProgress = 1f;
+                progressLabel = "Complete";
                 AppendLog($"\nConvert complete\nOutput: {outputPath}\n");
                 if (revealOnComplete)
                     EditorUtility.RevealInFinder(outputPath);
             }
             else
             {
+                progressLabel = "Failed";
                 AppendLog($"\nConvert failed. ExitCode: {exitCode}\n");
             }
 
@@ -347,6 +369,7 @@ namespace VLiveKit.VideoRack.Editor
         {
             EditorApplication.delayCall += () =>
             {
+                UpdateProgressFromFfmpegLine(line);
                 AppendLog(line + "\n");
                 Repaint();
             };
@@ -504,6 +527,13 @@ namespace VLiveKit.VideoRack.Editor
             EditorGUILayout.LabelField(text, miniHintStyle);
         }
 
+        private void DrawConversionProgress()
+        {
+            var rect = GUILayoutUtility.GetRect(18f, 18f, GUILayout.ExpandWidth(true));
+            EditorGUI.ProgressBar(rect, conversionProgress, progressLabel);
+            GUILayout.Space(3);
+        }
+
         private static string BuildArguments(string input, string output, OperationMode operation, HapPreset preset, int chunks, bool overwriteOutput, FfmpegOptions options)
         {
             var overwriteFlag = overwriteOutput ? "-y" : "-n";
@@ -604,9 +634,92 @@ namespace VLiveKit.VideoRack.Editor
             arguments.Append(" ").Append(rawArguments.Trim());
         }
 
+        private void UpdateProgressFromFfmpegLine(string line)
+        {
+            if (string.IsNullOrEmpty(line))
+                return;
+
+            var durationIndex = line.IndexOf("Duration:", StringComparison.Ordinal);
+            if (durationIndex >= 0)
+            {
+                var durationText = ReadTokenAfter(line, durationIndex + "Duration:".Length).TrimEnd(',');
+                if (TryParseFfmpegTime(durationText, out var duration))
+                {
+                    inputDurationSeconds = duration;
+                    progressLabel = "Duration " + FormatSeconds(duration);
+                }
+            }
+
+            var timeIndex = line.IndexOf("time=", StringComparison.Ordinal);
+            if (timeIndex >= 0)
+            {
+                var timeText = ReadTokenAfter(line, timeIndex + "time=".Length);
+                if (TryParseFfmpegTime(timeText, out var time))
+                {
+                    progressSeconds = time;
+                    if (inputDurationSeconds > 0d)
+                    {
+                        conversionProgress = Mathf.Clamp01((float)(progressSeconds / inputDurationSeconds));
+                        progressLabel = $"{FormatSeconds(progressSeconds)} / {FormatSeconds(inputDurationSeconds)}";
+                    }
+                    else
+                    {
+                        progressLabel = FormatSeconds(progressSeconds);
+                    }
+                }
+            }
+        }
+
+        private static string ReadTokenAfter(string line, int startIndex)
+        {
+            while (startIndex < line.Length && char.IsWhiteSpace(line[startIndex]))
+                startIndex++;
+
+            var endIndex = startIndex;
+            while (endIndex < line.Length && !char.IsWhiteSpace(line[endIndex]))
+                endIndex++;
+
+            return line.Substring(startIndex, endIndex - startIndex);
+        }
+
+        private static bool TryParseFfmpegTime(string value, out double seconds)
+        {
+            seconds = 0d;
+            if (string.IsNullOrWhiteSpace(value))
+                return false;
+
+            var parts = value.Trim().Split(':');
+            if (parts.Length == 3 &&
+                double.TryParse(parts[0], out var hours) &&
+                double.TryParse(parts[1], out var minutes) &&
+                double.TryParse(parts[2], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var secondPart))
+            {
+                seconds = hours * 3600d + minutes * 60d + secondPart;
+                return true;
+            }
+
+            return double.TryParse(value, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out seconds);
+        }
+
+        private static string FormatSeconds(double seconds)
+        {
+            if (seconds < 0d)
+                seconds = 0d;
+
+            var time = TimeSpan.FromSeconds(seconds);
+            return time.Hours > 0
+                ? $"{time.Hours:00}:{time.Minutes:00}:{time.Seconds:00}"
+                : $"{time.Minutes:00}:{time.Seconds:00}";
+        }
+
         private static string Quote(string value)
         {
             return "\"" + value.Replace("\"", "\\\"") + "\"";
+        }
+
+        private static string BuildCmdArguments(string executablePath, string ffmpegArguments)
+        {
+            return "/c \"\"" + executablePath + "\" " + ffmpegArguments + "\"";
         }
 
         private static string[] GetPresetNames()

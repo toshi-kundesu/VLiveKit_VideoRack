@@ -1,12 +1,8 @@
 {
-  "name": "VLiveKit.VideoRack.Editor",
-  "rootNamespace": "VLiveKit.VideoRack.Editor",
-  "references": [
-    "VLiveKit.VideoRack.Runtime"
-  ],
-  "includePlatforms": [
-    "Editor"
-  ],
+  "name": "VLiveKit.VideoRack.Runtime",
+  "rootNamespace": "VLiveKit.VideoRack",
+  "references": [],
+  "includePlatforms": [],
   "excludePlatforms": [],
   "allowUnsafeCode": false,
   "overrideReferences": false,
