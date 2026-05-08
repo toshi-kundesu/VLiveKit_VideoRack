@@ -77,7 +77,7 @@
       "url": "https://packages.unity.com"
     },
     "com.unity.render-pipelines.core": {
-      "version": "14.0.8",
+      "version": "17.3.0",
       "depth": 1,
       "source": "builtin",
       "dependencies": {
@@ -88,7 +88,7 @@
       }
     },
     "com.unity.render-pipelines.high-definition": {
-      "version": "14.0.8",
+      "version": "17.3.0",
       "depth": 0,
       "source": "builtin",
       "dependencies": {
@@ -98,18 +98,18 @@
         "com.unity.modules.animation": "1.0.0",
         "com.unity.modules.imageconversion": "1.0.0",
         "com.unity.modules.terrain": "1.0.0",
-        "com.unity.render-pipelines.core": "14.0.8",
-        "com.unity.shadergraph": "14.0.8",
-        "com.unity.visualeffectgraph": "14.0.8",
-        "com.unity.render-pipelines.high-definition-config": "14.0.8"
+        "com.unity.render-pipelines.core": "17.3.0",
+        "com.unity.shadergraph": "17.3.0",
+        "com.unity.visualeffectgraph": "17.3.0",
+        "com.unity.render-pipelines.high-definition-config": "17.3.0"
       }
     },
     "com.unity.render-pipelines.high-definition-config": {
-      "version": "14.0.8",
+      "version": "17.3.0",
       "depth": 1,
       "source": "builtin",
       "dependencies": {
-        "com.unity.render-pipelines.core": "14.0.8"
+        "com.unity.render-pipelines.core": "17.3.0"
       }
     },
     "com.unity.searcher": {
@@ -127,11 +127,11 @@
       "url": "https://packages.unity.com"
     },
     "com.unity.shadergraph": {
-      "version": "14.0.8",
+      "version": "17.3.0",
       "depth": 1,
       "source": "builtin",
       "dependencies": {
-        "com.unity.render-pipelines.core": "14.0.8",
+        "com.unity.render-pipelines.core": "17.3.0",
         "com.unity.searcher": "4.9.2"
       }
     },
@@ -187,12 +187,12 @@
       }
     },
     "com.unity.visualeffectgraph": {
-      "version": "14.0.8",
+      "version": "17.3.0",
       "depth": 1,
       "source": "builtin",
       "dependencies": {
-        "com.unity.shadergraph": "14.0.8",
-        "com.unity.render-pipelines.core": "14.0.8"
+        "com.unity.shadergraph": "17.3.0",
+        "com.unity.render-pipelines.core": "17.3.0"
       }
     },
     "com.unity.visualscripting": {
