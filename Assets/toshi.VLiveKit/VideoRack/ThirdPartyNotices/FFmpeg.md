@@ -8,6 +8,9 @@ VLiveKit VideoRack assemblies.
 
 - Component: FFmpeg
 - Bundled binary: `Tools/FFmpeg/Windows/ffmpeg.exe`
+- Published payload: `Tools/FFmpeg/Windows/ffmpeg.exe.part*.bytes` may be used
+  when npm package size handling requires split files; VideoRack reconstructs
+  them into a cache executable before use.
 - Build provider: gyan.dev
 - Build name: `2025-06-17-git-ee1f79b0fa-full_build-www.gyan.dev`
 - License: GNU General Public License version 3

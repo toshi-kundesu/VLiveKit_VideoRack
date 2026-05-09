@@ -5,7 +5,7 @@
 ## Package
 
 - Package name: `com.toshi.vlivekit.videorack`
-- Version: `0.1.13`
+- Version: `0.1.16`
 - Unity: 2022.3
 - Repository: https://github.com/toshi-kundesu/VLiveKit_VideoRack
 - Package root: `Assets/toshi.VLiveKit/VideoRack`
@@ -45,6 +45,13 @@ RenderTexture and scene rig. When KlakNDI is available in the project, the tool
 also adds and configures `Klak.Ndi.NdiSender` with Texture capture. KlakNDI is
 treated as an optional project dependency; this package does not reference it
 directly.
+
+## NDI Test Receiver
+
+Open `toshi/VLiveKit/VideoRack/NDI Test Receiver` to create an NDI receiver rig
+for quick loopback and network source checks. The window can refresh available
+KlakNDI source names, create a target RenderTexture, add `Klak.Ndi.NdiReceiver`,
+and optionally create a preview quad that displays the received texture.
 
 ## License
 

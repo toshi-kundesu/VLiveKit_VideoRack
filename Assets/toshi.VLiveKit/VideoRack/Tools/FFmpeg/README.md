@@ -30,6 +30,11 @@ Tools/FFmpeg/Windows/README.txt
 ThirdPartyNotices/FFmpeg.md
 ```
 
+In npm releases, the Windows binary may be stored as split payload files named
+`ffmpeg.exe.part*.bytes`. VideoRack reconstructs them into a cache executable
+before running FFmpeg. Keep every part file together with the GPL text, upstream
+README, and third-party notice.
+
 `README.txt` is the upstream gyan.dev build readme and includes the exact
 FFmpeg version, build configuration, source commit, enabled components, and
 external library versions.
