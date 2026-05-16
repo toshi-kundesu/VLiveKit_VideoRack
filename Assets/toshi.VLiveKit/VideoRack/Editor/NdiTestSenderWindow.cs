@@ -1,5 +1,6 @@
 #if UNITY_EDITOR
 using System;
+using System.Collections;
 using System.IO;
 using System.Reflection;
 using UnityEditor;
@@ -18,10 +19,13 @@ namespace VLiveKit.VideoRack.Editor
         private bool keepAlpha;
         private NdiTestPatternGenerator.PatternMode patternMode = NdiTestPatternGenerator.PatternMode.BarsAndGrid;
         private float speed = 1f;
-        private GUIStyle headerStyle;
-        private GUIStyle panelStyle;
-        private GUIStyle hintStyle;
-        private GUIStyle sectionTitleStyle;
+        private string statusMessage = "Ready";
+        private GameObject liveRoot;
+        private RenderTexture liveTexture;
+        private NdiTestPatternGenerator liveGenerator;
+        private Component liveSender;
+        private IEnumerator liveSenderCaptureRoutine;
+        private MethodInfo patternUpdateMethod;
 
         [MenuItem("toshi/VLiveKit/VideoRack/NDI Test Sender")]
         public static void Open()
@@ -29,18 +33,24 @@ namespace VLiveKit.VideoRack.Editor
             GetWindow<NdiTestSenderWindow>(WindowTitle);
         }
 
+        private void OnEnable()
+        {
+            EditorApplication.update += OnEditorUpdate;
+        }
+
+        private void OnDisable()
+        {
+            EditorApplication.update -= OnEditorUpdate;
+            StopWindowSender();
+        }
+
         private void OnGUI()
         {
-            InitializeStyles();
-
-            var background = EditorGUIUtility.isProSkin ? new Color(0.115f, 0.115f, 0.115f) : new Color(0.90f, 0.91f, 0.92f);
-            EditorGUI.DrawRect(new Rect(0f, 0f, position.width, position.height), background);
-
             using (new EditorGUILayout.VerticalScope())
             {
                 DrawHeader();
 
-                using (new EditorGUILayout.VerticalScope(panelStyle))
+                using (new EditorGUILayout.VerticalScope(VideoRackEditorUI.Panel))
                 {
                     DrawSectionTitle("NDI");
                     ndiName = EditorGUILayout.TextField(new GUIContent("NDI Name", "Name shown in NDI receivers."), ndiName);
@@ -56,9 +66,9 @@ namespace VLiveKit.VideoRack.Editor
                         DrawHint("KlakNDI is visible. The created rig will use Texture capture and send the generated RenderTexture.");
                 }
 
-                using (new EditorGUILayout.VerticalScope(panelStyle))
+                using (new EditorGUILayout.VerticalScope(VideoRackEditorUI.Panel))
                 {
-                    DrawSectionTitle("PATTERN");
+                    DrawSectionTitle("Pattern");
                     width = Mathf.Max(16, EditorGUILayout.IntField(new GUIContent("Width", "NDI test texture width."), width));
                     height = Mathf.Max(8, EditorGUILayout.IntField(new GUIContent("Height", "NDI test texture height."), height));
                     patternMode = (NdiTestPatternGenerator.PatternMode)EditorGUILayout.EnumPopup("Mode", patternMode);
@@ -68,16 +78,134 @@ namespace VLiveKit.VideoRack.Editor
                         DrawHint("KlakNDI recommends frame dimensions that are multiples of 16 x 8.");
                 }
 
-                using (new EditorGUILayout.VerticalScope(panelStyle))
+                DrawWindowSenderSection();
+
+                using (new EditorGUILayout.VerticalScope(VideoRackEditorUI.Panel))
                 {
-                    DrawSectionTitle("CREATE");
+                    DrawSectionTitle("Scene Rig");
+                    VideoRackEditorUI.DrawStatus(statusMessage);
                     using (new EditorGUI.DisabledScope(string.IsNullOrWhiteSpace(ndiName)))
                     {
-                        if (GUILayout.Button("CREATE TEST SENDER", GUILayout.Height(34)))
+                        if (GUILayout.Button("Create Scene Sender", VideoRackEditorUI.PrimaryButton, GUILayout.Height(30)))
                             CreateTestSender();
                     }
                 }
             }
+        }
+
+        private void OnEditorUpdate()
+        {
+            if (liveRoot == null)
+                return;
+
+            if (liveGenerator != null)
+            {
+                liveGenerator.TargetTexture = liveTexture;
+                liveGenerator.Pattern = patternMode;
+                liveGenerator.Speed = speed;
+                InvokePatternUpdate(liveGenerator);
+            }
+
+            if (liveSenderCaptureRoutine != null)
+            {
+                try
+                {
+                    liveSenderCaptureRoutine.MoveNext();
+                }
+                catch (Exception exception)
+                {
+                    statusMessage = "Window NDI sender update failed: " + exception.Message;
+                    liveSenderCaptureRoutine = null;
+                }
+            }
+
+            EditorApplication.QueuePlayerLoopUpdate();
+            Repaint();
+        }
+
+        private void DrawWindowSenderSection()
+        {
+            using (new EditorGUILayout.VerticalScope(VideoRackEditorUI.Panel))
+            {
+                DrawSectionTitle("Window Sender");
+                var isRunning = liveRoot != null;
+                VideoRackEditorUI.DrawStatus(isRunning
+                    ? "Sending from this editor window. No scene object is saved."
+                    : "Starts a temporary editor-only sender without entering Play Mode.");
+
+                if (liveTexture != null)
+                    DrawPreviewTexture(liveTexture);
+
+                using (new EditorGUILayout.HorizontalScope())
+                {
+                    using (new EditorGUI.DisabledScope(isRunning || string.IsNullOrWhiteSpace(ndiName)))
+                    {
+                        if (GUILayout.Button("Start Window Sender", VideoRackEditorUI.PrimaryButton, GUILayout.Height(28)))
+                            StartWindowSender();
+                    }
+
+                    using (new EditorGUI.DisabledScope(!isRunning))
+                    {
+                        if (GUILayout.Button("Stop", GUILayout.Height(28)))
+                            StopWindowSender();
+                    }
+                }
+            }
+        }
+
+        private void StartWindowSender()
+        {
+            StopWindowSender();
+
+            liveTexture = CreateRuntimeRenderTexture("VLiveKit NDI Window Sender");
+            liveRoot = new GameObject("VLiveKit NDI Window Sender")
+            {
+                hideFlags = HideFlags.HideAndDontSave
+            };
+
+            liveGenerator = liveRoot.AddComponent<NdiTestPatternGenerator>();
+            liveGenerator.hideFlags = HideFlags.HideAndDontSave;
+            liveGenerator.TargetTexture = liveTexture;
+            liveGenerator.Pattern = patternMode;
+            liveGenerator.Speed = speed;
+
+            liveSender = AddAndConfigureNdiSender(liveRoot, liveTexture);
+            liveSenderCaptureRoutine = CreateCaptureRoutine(liveSender);
+            if (liveSenderCaptureRoutine != null)
+            {
+                try
+                {
+                    liveSenderCaptureRoutine.MoveNext();
+                }
+                catch (Exception exception)
+                {
+                    statusMessage = "Window NDI sender could not start: " + exception.Message;
+                    liveSenderCaptureRoutine = null;
+                }
+            }
+
+            statusMessage = liveSender != null
+                ? "Window NDI sender started."
+                : "Window pattern started. KlakNDI sender is not available.";
+            VideoRackEditorUI.ShowNotification(this, "Window NDI sender started");
+        }
+
+        private void StopWindowSender()
+        {
+            liveSenderCaptureRoutine = null;
+            liveSender = null;
+            liveGenerator = null;
+
+            if (liveRoot != null)
+                DestroyImmediate(liveRoot);
+            liveRoot = null;
+
+            if (liveTexture != null)
+            {
+                liveTexture.Release();
+                DestroyImmediate(liveTexture);
+            }
+            liveTexture = null;
         }
 
         private void CreateTestSender()
@@ -109,6 +237,8 @@ namespace VLiveKit.VideoRack.Editor
 
             Selection.activeObject = sender != null ? sender : (UnityEngine.Object)root;
             EditorGUIUtility.PingObject(texture);
+            statusMessage = "NDI test sender created.";
+            VideoRackEditorUI.ShowNotification(this, "NDI test sender created");
         }
 
         private Component AddAndConfigureNdiSender(GameObject target, RenderTexture texture)
@@ -125,7 +255,58 @@ namespace VLiveKit.VideoRack.Editor
             SetObject(serialized, "_sourceTexture", texture);
             SetObject(serialized, "_resources", FindNdiResources());
             serialized.ApplyModifiedPropertiesWithoutUndo();
+            InvokePrivate(sender, "OnValidate");
             return sender;
+        }
+
+        private RenderTexture CreateRuntimeRenderTexture(string textureName)
+        {
+            var texture = new RenderTexture(width, height, 0, RenderTextureFormat.ARGB32)
+            {
+                name = textureName,
+                hideFlags = HideFlags.HideAndDontSave,
+                wrapMode = TextureWrapMode.Clamp,
+                filterMode = FilterMode.Bilinear,
+                antiAliasing = 1,
+                useMipMap = false,
+                autoGenerateMips = false
+            };
+            texture.Create();
+            return texture;
+        }
+
+        private static IEnumerator CreateCaptureRoutine(Component sender)
+        {
+            if (sender == null)
+                return null;
+
+            var method = sender.GetType().GetMethod("CaptureCoroutine", BindingFlags.Instance | BindingFlags.NonPublic);
+            return method?.Invoke(sender, null) as IEnumerator;
+        }
+
+        private void InvokePatternUpdate(NdiTestPatternGenerator generator)
+        {
+            if (generator == null)
+                return;
+
+            if (patternUpdateMethod == null)
+                patternUpdateMethod = typeof(NdiTestPatternGenerator).GetMethod("Update", BindingFlags.Instance | BindingFlags.NonPublic);
+            patternUpdateMethod?.Invoke(generator, null);
+        }
+
+        private static void InvokePrivate(Component component, string methodName)
+        {
+            component?.GetType().GetMethod(methodName, BindingFlags.Instance | BindingFlags.NonPublic)?.Invoke(component, null);
+        }
+
+        private static void DrawPreviewTexture(Texture texture)
+        {
+            if (texture == null)
+                return;
+
+            var aspect = texture.height > 0 ? texture.width / (float)texture.height : 16f / 9f;
+            var rect = GUILayoutUtility.GetAspectRect(aspect, GUILayout.MinHeight(120), GUILayout.MaxHeight(220));
+            EditorGUI.DrawPreviewTexture(rect, texture, null, ScaleMode.ScaleToFit);
         }
 
         private static void SetString(SerializedObject serialized, string propertyName, string value)
@@ -215,71 +396,19 @@ namespace VLiveKit.VideoRack.Editor
             return string.IsNullOrEmpty(value) ? "NDI Test Sender" : value;
         }
 
-        private void InitializeStyles()
-        {
-            if (headerStyle != null && panelStyle != null && hintStyle != null && sectionTitleStyle != null)
-                return;
-
-            headerStyle = new GUIStyle(EditorStyles.boldLabel)
-            {
-                fontSize = 17,
-                normal = { textColor = EditorGUIUtility.isProSkin ? new Color(0.90f, 0.91f, 0.92f) : new Color(0.12f, 0.13f, 0.14f) },
-                margin = new RectOffset(8, 8, 8, 2)
-            };
-
-            panelStyle = new GUIStyle(EditorStyles.helpBox)
-            {
-                padding = new RectOffset(10, 10, 8, 9),
-                margin = new RectOffset(8, 8, 5, 6),
-                normal =
-                {
-                    background = MakeSolidTexture(EditorGUIUtility.isProSkin ? new Color(0.19f, 0.19f, 0.19f) : new Color(0.84f, 0.85f, 0.86f))
-                }
-            };
-
-            hintStyle = new GUIStyle(EditorStyles.helpBox)
-            {
-                fontSize = 10,
-                wordWrap = true,
-                padding = new RectOffset(6, 6, 3, 4),
-                normal =
-                {
-                    textColor = EditorGUIUtility.isProSkin ? new Color(0.67f, 0.68f, 0.70f) : new Color(0.34f, 0.35f, 0.37f),
-                    background = MakeSolidTexture(EditorGUIUtility.isProSkin ? new Color(0.145f, 0.145f, 0.145f) : new Color(0.78f, 0.79f, 0.81f))
-                }
-            };
-
-            sectionTitleStyle = new GUIStyle(EditorStyles.miniBoldLabel)
-            {
-                fontSize = 10,
-                normal = { textColor = new Color(0.25f, 0.84f, 0.92f) }
-            };
-        }
-
         private void DrawHeader()
         {
-            EditorGUILayout.LabelField("NDI Test Sender", headerStyle);
+            VideoRackEditorUI.DrawHeader("NDI Test Sender", "Generated texture sender setup");
         }
 
         private void DrawSectionTitle(string text)
         {
-            EditorGUILayout.LabelField(text, sectionTitleStyle);
+            VideoRackEditorUI.DrawSectionTitle(text);
         }
 
         private void DrawHint(string text)
         {
-            EditorGUILayout.LabelField(text, hintStyle);
-        }
-
-        private static Texture2D MakeSolidTexture(Color color)
-        {
-            var texture = new Texture2D(1, 1)
-            {
-                hideFlags = HideFlags.HideAndDontSave
-            };
-            texture.SetPixel(0, 0, color);
-            texture.Apply();
-            return texture;
+            VideoRackEditorUI.DrawHint(text);
         }
     }
 }

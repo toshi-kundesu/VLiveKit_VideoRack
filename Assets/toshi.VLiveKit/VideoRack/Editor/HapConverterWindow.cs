@@ -50,13 +50,7 @@ namespace VLiveKit.VideoRack.Editor
         private double progressSeconds;
         private float conversionProgress;
         private string progressLabel = "Waiting";
-        private GUIStyle headerStyle;
-        private GUIStyle panelStyle;
-        private GUIStyle sectionTitleStyle;
-        private GUIStyle statusStyle;
-        private GUIStyle miniHintStyle;
-        private GUIStyle primaryButtonStyle;
-        private GUIStyle logStyle;
+        private string statusMessage = "Ready";
 
         [MenuItem("toshi/VLiveKit/VideoRack/HAP Converter")]
         public static void Open()
@@ -66,25 +60,20 @@ namespace VLiveKit.VideoRack.Editor
 
         private void OnGUI()
         {
-            InitializeStyles();
-
-            var windowRect = new Rect(0f, 0f, position.width, position.height);
-            EditorGUI.DrawRect(windowRect, EditorGUIUtility.isProSkin ? new Color(0.115f, 0.115f, 0.115f) : new Color(0.90f, 0.91f, 0.92f));
-
             mainScroll = EditorGUILayout.BeginScrollView(mainScroll);
             DrawHeader();
 
-            using (new EditorGUILayout.VerticalScope(panelStyle))
+            using (new EditorGUILayout.VerticalScope(VideoRackEditorUI.Panel))
             {
-                DrawSectionTitle("SOURCE");
+                DrawSectionTitle("Source");
                 DrawPathRow("Input", inputPath, "Select", SelectInput);
                 using (new EditorGUI.DisabledScope(string.IsNullOrEmpty(inputPath)))
                     DrawPathRow("Output", outputPath, "Change", SelectOutput);
             }
 
-            using (new EditorGUILayout.VerticalScope(panelStyle))
+            using (new EditorGUILayout.VerticalScope(VideoRackEditorUI.Panel))
             {
-                DrawSectionTitle("MODE");
+                DrawSectionTitle("Mode");
 
                 EditorGUI.BeginChangeCheck();
                 operationMode = (OperationMode)EditorGUILayout.Popup(
@@ -119,9 +108,9 @@ namespace VLiveKit.VideoRack.Editor
                 }
             }
 
-            using (new EditorGUILayout.VerticalScope(panelStyle))
+            using (new EditorGUILayout.VerticalScope(VideoRackEditorUI.Panel))
             {
-                DrawSectionTitle("FFMPEG PROCESSING");
+                DrawSectionTitle("FFmpeg Processing");
 
                 resizeEnabled = EditorGUILayout.ToggleLeft(new GUIContent("Resize", "Adds a scale filter before HAP encoding."), resizeEnabled);
                 using (new EditorGUI.DisabledScope(!resizeEnabled))
@@ -149,9 +138,9 @@ namespace VLiveKit.VideoRack.Editor
                     audioMode = (AudioMode)EditorGUILayout.EnumPopup(new GUIContent("Audio", "Choose how audio is written to the output movie."), audioMode);
             }
 
-            using (new EditorGUILayout.VerticalScope(panelStyle))
+            using (new EditorGUILayout.VerticalScope(VideoRackEditorUI.Panel))
             {
-                DrawSectionTitle("OUTPUT");
+                DrawSectionTitle("Output");
                 overwrite = EditorGUILayout.Toggle("Overwrite Output", overwrite);
                 revealOnComplete = EditorGUILayout.Toggle("Reveal On Complete", revealOnComplete);
                 showFfmpegConsole = EditorGUILayout.Toggle(new GUIContent("Show FFmpeg Console", "Launch ffmpeg through a visible command prompt instead of only streaming output into the Unity log."), showFfmpegConsole);
@@ -167,30 +156,31 @@ namespace VLiveKit.VideoRack.Editor
                 var ffmpegPath = FfmpegLocator.GetExecutablePath();
                 using (new EditorGUI.DisabledScope(true))
                     EditorGUILayout.TextField("ffmpeg", ffmpegPath);
+                VideoRackEditorUI.DrawStatus(statusMessage);
 
                 GUILayout.Space(6);
                 using (new EditorGUI.DisabledScope(isConverting || string.IsNullOrEmpty(inputPath)))
                 {
-                    if (GUILayout.Button(GetActionLabel(operationMode), primaryButtonStyle, GUILayout.Height(34)))
+                    if (GUILayout.Button(GetActionLabel(operationMode), VideoRackEditorUI.PrimaryButton, GUILayout.Height(30)))
                         StartConvert();
                 }
 
                 if (isConverting)
                 {
-                    DrawHint("ON AIR: ffmpeg is converting. Unity remains usable while the process runs.");
+                    DrawHint("FFmpeg is converting. Unity remains usable while the process runs.");
                     DrawConversionProgress();
 
-                    if (GUILayout.Button("STOP CONVERSION", GUILayout.Height(26)))
+                    if (GUILayout.Button("Stop Conversion", GUILayout.Height(24)))
                         StopConversion();
                 }
             }
 
-            using (new EditorGUILayout.VerticalScope(panelStyle))
+            using (new EditorGUILayout.VerticalScope(VideoRackEditorUI.Panel))
             {
-                DrawSectionTitle("LOG");
+                DrawSectionTitle("Log");
 
                 logScroll = EditorGUILayout.BeginScrollView(logScroll, GUILayout.MinHeight(180));
-                EditorGUILayout.TextArea(log.ToString(), logStyle, GUILayout.ExpandHeight(true));
+                EditorGUILayout.TextArea(log.ToString(), VideoRackEditorUI.Log, GUILayout.ExpandHeight(true));
                 EditorGUILayout.EndScrollView();
             }
 
@@ -206,6 +196,7 @@ namespace VLiveKit.VideoRack.Editor
             inputPath = path;
             outputPath = BuildDefaultOutputPath(path, operationMode, Presets[presetIndex]);
             outputPathWasEdited = false;
+            statusMessage = "Input selected.";
         }
 
         private void SelectOutput()
@@ -220,6 +211,7 @@ namespace VLiveKit.VideoRack.Editor
             {
                 outputPath = path;
                 outputPathWasEdited = true;
+                statusMessage = "Output path set.";
             }
         }
 
@@ -228,16 +220,15 @@ namespace VLiveKit.VideoRack.Editor
             var ffmpegPath = FfmpegLocator.GetExecutablePath();
             if (!File.Exists(ffmpegPath))
             {
-                EditorUtility.DisplayDialog(
-                    "ffmpeg not found",
-                    $"Place ffmpeg here before converting:\n\n{ffmpegPath}",
-                    "OK");
+                statusMessage = $"ffmpeg was not found. Place ffmpeg at: {ffmpegPath}";
+                VideoRackEditorUI.ShowNotification(this, "ffmpeg not found");
                 return;
             }
 
             if (!File.Exists(inputPath))
             {
-                EditorUtility.DisplayDialog("Input not found", "The selected input movie could not be found.", "OK");
+                statusMessage = "The selected input movie could not be found.";
+                VideoRackEditorUI.ShowNotification(this, "Input not found");
                 return;
             }
 
@@ -264,6 +255,7 @@ namespace VLiveKit.VideoRack.Editor
             progressSeconds = 0d;
             conversionProgress = 0f;
             progressLabel = showFfmpegConsole ? "External console" : "Starting";
+            statusMessage = "Starting ffmpeg.";
             log.Length = 0;
             AppendLog($"Start {GetOperationDisplayName(operationMode)}\nffmpeg: {ffmpegPath}\nargs: {arguments}\n\n");
 
@@ -298,9 +290,13 @@ namespace VLiveKit.VideoRack.Editor
             {
                 process.Start();
                 if (showFfmpegConsole)
+                {
+                    statusMessage = "FFmpeg is running in an external command prompt.";
                     AppendLog("FFmpeg is running in an external command prompt.\n");
+                }
                 else
                 {
+                    statusMessage = "FFmpeg is running.";
                     process.BeginOutputReadLine();
                     process.BeginErrorReadLine();
                 }
@@ -308,6 +304,7 @@ namespace VLiveKit.VideoRack.Editor
             catch (Exception e)
             {
                 isConverting = false;
+                statusMessage = "Could not start ffmpeg. See the log for details.";
                 AppendLog(e + "\n");
                 Debug.LogException(e);
                 process.Dispose();
@@ -327,6 +324,7 @@ namespace VLiveKit.VideoRack.Editor
             {
                 conversionProgress = 1f;
                 progressLabel = "Complete";
+                statusMessage = "Conversion complete.";
                 AppendLog($"\nConvert complete\nOutput: {outputPath}\n");
                 if (revealOnComplete)
                     EditorUtility.RevealInFinder(outputPath);
@@ -334,6 +332,7 @@ namespace VLiveKit.VideoRack.Editor
             else
             {
                 progressLabel = "Failed";
+                statusMessage = $"FFmpeg exited with code {exitCode}. See the log for details.";
                 AppendLog($"\nConvert failed. ExitCode: {exitCode}\n");
             }
 
@@ -350,10 +349,12 @@ namespace VLiveKit.VideoRack.Editor
             try
             {
                 process.Kill();
+                statusMessage = "Conversion stopped.";
                 AppendLog("\nConversion stopped.\n");
             }
             catch (Exception e)
             {
+                statusMessage = "Could not stop the ffmpeg process. See the log for details.";
                 AppendLog(e + "\n");
                 Debug.LogException(e);
             }
@@ -405,111 +406,14 @@ namespace VLiveKit.VideoRack.Editor
             }
         }
 
-        private void InitializeStyles()
-        {
-            if (headerStyle != null &&
-                panelStyle != null &&
-                sectionTitleStyle != null &&
-                statusStyle != null &&
-                miniHintStyle != null &&
-                primaryButtonStyle != null &&
-                logStyle != null)
-            {
-                return;
-            }
-
-            headerStyle = new GUIStyle(EditorStyles.boldLabel)
-            {
-                fontSize = 17,
-                normal = { textColor = EditorGUIUtility.isProSkin ? new Color(0.90f, 0.91f, 0.92f) : new Color(0.12f, 0.13f, 0.14f) },
-                margin = new RectOffset(0, 0, 3, 1)
-            };
-
-            panelStyle = new GUIStyle(EditorStyles.helpBox)
-            {
-                padding = new RectOffset(10, 10, 8, 9),
-                margin = new RectOffset(8, 8, 5, 6),
-                normal =
-                {
-                    background = MakeSolidTexture(EditorGUIUtility.isProSkin ? new Color(0.19f, 0.19f, 0.19f) : new Color(0.84f, 0.85f, 0.86f))
-                }
-            };
-
-            sectionTitleStyle = new GUIStyle(EditorStyles.miniBoldLabel)
-            {
-                fontSize = 10,
-                normal = { textColor = AccentColor(1f) }
-            };
-
-            statusStyle = new GUIStyle(EditorStyles.miniBoldLabel)
-            {
-                alignment = TextAnchor.MiddleRight,
-                normal = { textColor = new Color(0.72f, 0.74f, 0.76f) }
-            };
-
-            miniHintStyle = new GUIStyle(EditorStyles.helpBox)
-            {
-                fontSize = 10,
-                wordWrap = true,
-                padding = new RectOffset(6, 6, 3, 4),
-                normal =
-                {
-                    textColor = EditorGUIUtility.isProSkin ? new Color(0.67f, 0.68f, 0.70f) : new Color(0.34f, 0.35f, 0.37f),
-                    background = MakeSolidTexture(EditorGUIUtility.isProSkin ? new Color(0.145f, 0.145f, 0.145f) : new Color(0.78f, 0.79f, 0.81f))
-                }
-            };
-
-            primaryButtonStyle = new GUIStyle(EditorStyles.miniButton)
-            {
-                fontStyle = FontStyle.Bold,
-                normal = { textColor = EditorGUIUtility.isProSkin ? new Color(0.92f, 0.94f, 0.96f) : new Color(0.10f, 0.12f, 0.15f) }
-            };
-
-            logStyle = new GUIStyle(EditorStyles.textArea)
-            {
-                fontSize = 11,
-                wordWrap = false,
-                normal =
-                {
-                    textColor = EditorGUIUtility.isProSkin ? new Color(0.82f, 0.84f, 0.86f) : new Color(0.12f, 0.13f, 0.14f),
-                    background = MakeSolidTexture(EditorGUIUtility.isProSkin ? new Color(0.10f, 0.10f, 0.10f) : Color.white)
-                }
-            };
-        }
-
         private void DrawHeader()
         {
-            var rect = GUILayoutUtility.GetRect(0f, 44f, GUILayout.ExpandWidth(true));
-            EditorGUI.DrawRect(rect, EditorGUIUtility.isProSkin ? new Color(0.145f, 0.145f, 0.145f) : new Color(0.86f, 0.87f, 0.88f));
-            EditorGUI.DrawRect(new Rect(rect.x, rect.yMax - 1f, rect.width, 1f), AccentColor(0.95f));
-
-            var titleRect = new Rect(rect.x + 12f, rect.y + 7f, rect.width - 160f, 22f);
-            GUI.Label(titleRect, "VIDEO RACK / FFMPEG", headerStyle);
-
-            var subtitleRect = new Rect(rect.x + 12f, rect.y + 26f, rect.width - 160f, 16f);
-            GUI.Label(subtitleRect, "HAP Converter", EditorStyles.miniLabel);
-
-            var statusRect = new Rect(rect.xMax - 118f, rect.y + 11f, 104f, 20f);
-            statusStyle.normal.textColor = isConverting ? new Color(0.95f, 0.44f, 0.22f) : new Color(0.72f, 0.74f, 0.76f);
-            GUI.Label(statusRect, isConverting ? "ENCODING" : "STANDBY", statusStyle);
-        }
-
-        private static Color AccentColor(float alpha)
-        {
-            return new Color(0.08f, 0.38f, 0.86f, alpha);
-        }
-
-        private static Texture2D MakeSolidTexture(Color color)
-        {
-            var texture = new Texture2D(1, 1) { hideFlags = HideFlags.HideAndDontSave };
-            texture.SetPixel(0, 0, color);
-            texture.Apply();
-            return texture;
+            VideoRackEditorUI.DrawHeader("HAP Converter", "FFmpeg video conversion", isConverting ? "Converting" : "Ready");
         }
 
         private void DrawSectionTitle(string title)
         {
-            EditorGUILayout.LabelField(title, sectionTitleStyle);
+            VideoRackEditorUI.DrawSectionTitle(title);
         }
 
         private void DrawPathRow(string label, string path, string buttonLabel, Action buttonAction)
@@ -524,7 +428,7 @@ namespace VLiveKit.VideoRack.Editor
 
         private void DrawHint(string text)
         {
-            EditorGUILayout.LabelField(text, miniHintStyle);
+            VideoRackEditorUI.DrawHint(text);
         }
 
         private void DrawConversionProgress()
@@ -755,13 +659,13 @@ namespace VLiveKit.VideoRack.Editor
             switch (operation)
             {
                 case OperationMode.ExtractWav:
-                    return "EXTRACT AUDIO";
+                    return "Extract Audio";
                 case OperationMode.RemuxMov:
-                    return "REMUX";
+                    return "Remux";
                 case OperationMode.Custom:
-                    return "RUN FFMPEG";
+                    return "Run FFmpeg";
                 default:
-                    return "CONVERT";
+                    return "Convert";
             }
         }
 

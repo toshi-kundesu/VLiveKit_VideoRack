@@ -3,6 +3,10 @@ using UnityEngine;
 
 namespace VLiveKit.VideoRack
 {
+    /// <summary>
+    /// Generates an always-available RenderTexture test pattern for NDI sender/receiver validation.
+    /// The pattern is drawn with immediate-mode GL so tests do not depend on scene cameras or imported textures.
+    /// </summary>
     [ExecuteAlways]
     public sealed class NdiTestPatternGenerator : MonoBehaviour
     {
@@ -66,6 +70,7 @@ namespace VLiveKit.VideoRack
             var previous = RenderTexture.active;
             RenderTexture.active = targetTexture;
 
+            // Draw directly into the assigned target and restore the previous active texture afterward.
             GL.PushMatrix();
             GL.LoadPixelMatrix(0f, targetTexture.width, targetTexture.height, 0f);
             GL.Clear(true, true, Color.black);
@@ -88,6 +93,7 @@ namespace VLiveKit.VideoRack
             if (material != null)
                 return;
 
+            // Hidden/Internal-Colored keeps the generator dependency-free inside Unity editor/runtime builds.
             var shader = Shader.Find("Hidden/Internal-Colored");
             if (shader == null)
                 return;

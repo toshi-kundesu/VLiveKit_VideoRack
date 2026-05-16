@@ -26,13 +26,9 @@ namespace VLiveKit.VideoRack.Editor
         private float timelineFps = 30f;
         private bool isAnalyzing;
         private Vector2 scroll;
+        private string statusMessage = "Ready";
         private readonly StringBuilder log = new StringBuilder();
         private readonly List<LtcDecodedFrame> decodedFrames = new List<LtcDecodedFrame>();
-        private GUIStyle headerStyle;
-        private GUIStyle panelStyle;
-        private GUIStyle sectionTitleStyle;
-        private GUIStyle hintStyle;
-        private GUIStyle resultStyle;
 
         [MenuItem("toshi/VLiveKit/VideoRack/LTC Media Analyzer")]
         public static void Open()
@@ -42,17 +38,12 @@ namespace VLiveKit.VideoRack.Editor
 
         private void OnGUI()
         {
-            InitializeStyles();
-
-            var windowRect = new Rect(0f, 0f, position.width, position.height);
-            EditorGUI.DrawRect(windowRect, EditorGUIUtility.isProSkin ? new Color(0.115f, 0.115f, 0.115f) : new Color(0.90f, 0.91f, 0.92f));
-
             scroll = EditorGUILayout.BeginScrollView(scroll);
             DrawHeader();
 
-            using (new EditorGUILayout.VerticalScope(panelStyle))
+            using (new EditorGUILayout.VerticalScope(VideoRackEditorUI.Panel))
             {
-                DrawSectionTitle("SOURCE");
+                DrawSectionTitle("Source");
                 using (new EditorGUILayout.HorizontalScope())
                 {
                     EditorGUILayout.TextField("Movie", inputPath);
@@ -65,7 +56,7 @@ namespace VLiveKit.VideoRack.Editor
                 DrawHint("If LTC is recorded on one side of a stereo track, set Channel to 0 or 1. Use -1 when the file is already mono or you want ffmpeg to downmix.");
             }
 
-            using (new EditorGUILayout.VerticalScope(panelStyle))
+            using (new EditorGUILayout.VerticalScope(VideoRackEditorUI.Panel))
             {
                 DrawSectionTitle("LTC");
                 expectedLtcFps = EditorGUILayout.FloatField(new GUIContent("Expected FPS", "Used to classify LTC pulse widths. Try 24, 25, 29.97, or 30 if decoding is unstable."), expectedLtcFps);
@@ -73,9 +64,9 @@ namespace VLiveKit.VideoRack.Editor
                 analyzeDurationSeconds = Mathf.Max(1f, EditorGUILayout.FloatField(new GUIContent("Analyze Seconds", "Only this much audio is extracted from the head of the movie."), analyzeDurationSeconds));
             }
 
-            using (new EditorGUILayout.VerticalScope(panelStyle))
+            using (new EditorGUILayout.VerticalScope(VideoRackEditorUI.Panel))
             {
-                DrawSectionTitle("TIMELINE ESTIMATE");
+                DrawSectionTitle("Timeline Estimate");
                 clipInSeconds = Mathf.Max(0f, EditorGUILayout.FloatField(new GUIContent("Clip In Seconds", "Timeline clip trim offset into the source movie."), clipInSeconds));
                 timelineStartSeconds = Mathf.Max(0f, EditorGUILayout.FloatField(new GUIContent("Timeline Start Seconds", "Where the Timeline clip starts."), timelineStartSeconds));
                 timelineFps = Mathf.Max(1f, EditorGUILayout.FloatField("Timeline FPS", timelineFps));
@@ -83,35 +74,36 @@ namespace VLiveKit.VideoRack.Editor
                 DrawTimelineResult();
             }
 
-            using (new EditorGUILayout.VerticalScope(panelStyle))
+            using (new EditorGUILayout.VerticalScope(VideoRackEditorUI.Panel))
             {
-                DrawSectionTitle("ANALYZE");
+                DrawSectionTitle("Analyze");
                 var ffmpegPath = VideoRackFfmpegLocator.GetExecutablePath();
                 using (new EditorGUI.DisabledScope(true))
                     EditorGUILayout.TextField("ffmpeg", ffmpegPath);
+                VideoRackEditorUI.DrawStatus(statusMessage);
 
                 using (new EditorGUI.DisabledScope(isAnalyzing || string.IsNullOrEmpty(inputPath)))
                 {
-                    if (GUILayout.Button("ANALYZE LTC", GUILayout.Height(34)))
+                    if (GUILayout.Button("Analyze LTC", VideoRackEditorUI.PrimaryButton, GUILayout.Height(30)))
                         Analyze();
                 }
             }
 
-            using (new EditorGUILayout.VerticalScope(panelStyle))
+            using (new EditorGUILayout.VerticalScope(VideoRackEditorUI.Panel))
             {
-                DrawSectionTitle("RESULT");
+                DrawSectionTitle("Result");
                 if (decodedFrames.Count > 0)
                 {
                     var first = decodedFrames[0].Timecode;
-                    EditorGUILayout.LabelField("First decoded LTC", first.ToString(), resultStyle);
-                    EditorGUILayout.LabelField("Decoded frames", decodedFrames.Count.ToString(CultureInfo.InvariantCulture), resultStyle);
+                    EditorGUILayout.LabelField("First decoded LTC", first.ToString(), VideoRackEditorUI.Result);
+                    EditorGUILayout.LabelField("Decoded frames", decodedFrames.Count.ToString(CultureInfo.InvariantCulture), VideoRackEditorUI.Result);
                 }
                 else
                 {
                     DrawHint("No LTC frame decoded yet.");
                 }
 
-                EditorGUILayout.TextArea(log.ToString(), GUILayout.MinHeight(180));
+                EditorGUILayout.TextArea(log.ToString(), VideoRackEditorUI.Log, GUILayout.MinHeight(180));
             }
 
             EditorGUILayout.EndScrollView();
@@ -121,25 +113,31 @@ namespace VLiveKit.VideoRack.Editor
         {
             var path = EditorUtility.OpenFilePanel("Select Movie With LTC", string.Empty, "mp4,mov,avi,mkv,webm,wav");
             if (!string.IsNullOrEmpty(path))
+            {
                 inputPath = path;
+                statusMessage = "Input selected.";
+            }
         }
 
         private void Analyze()
         {
             if (!File.Exists(inputPath))
             {
-                EditorUtility.DisplayDialog("Input not found", "The selected media file could not be found.", "OK");
+                statusMessage = "The selected media file could not be found.";
+                VideoRackEditorUI.ShowNotification(this, "Input not found");
                 return;
             }
 
             var ffmpegPath = VideoRackFfmpegLocator.GetExecutablePath();
             if (!File.Exists(ffmpegPath))
             {
-                EditorUtility.DisplayDialog("ffmpeg not found", $"Place ffmpeg here before analyzing:\n\n{ffmpegPath}", "OK");
+                statusMessage = $"ffmpeg was not found. Place ffmpeg at: {ffmpegPath}";
+                VideoRackEditorUI.ShowNotification(this, "ffmpeg not found");
                 return;
             }
 
             isAnalyzing = true;
+            statusMessage = "Analyzing LTC.";
             decodedFrames.Clear();
             log.Length = 0;
             Repaint();
@@ -158,12 +156,14 @@ namespace VLiveKit.VideoRack.Editor
                     decodedFrames.AddRange(frames);
                     if (decodedFrames.Count > 0)
                     {
+                        statusMessage = $"Decoded {decodedFrames.Count} LTC frames.";
                         AppendLog($"First LTC: {decodedFrames[0].Timecode}\n");
                         AppendLog($"Timeline head frame: {Mathf.RoundToInt(timelineStartSeconds * timelineFps)}\n");
                         AppendLog($"Source head at clip in: {GetSourceHeadTimecode()}\n");
                     }
                     else
                     {
+                        statusMessage = "No LTC frame decoded. Try another channel, threshold, or expected FPS.";
                         AppendLog("No LTC frame could be decoded. Try another channel, lower threshold, or another expected FPS.\n");
                     }
                 }
@@ -175,6 +175,7 @@ namespace VLiveKit.VideoRack.Editor
             }
             catch (Exception e)
             {
+                statusMessage = "Analysis failed. See the log for details.";
                 AppendLog(e + "\n");
                 Debug.LogException(e);
             }
@@ -193,8 +194,8 @@ namespace VLiveKit.VideoRack.Editor
                 return;
             }
 
-            EditorGUILayout.LabelField("TL Head Frame", Mathf.RoundToInt(timelineStartSeconds * timelineFps).ToString(CultureInfo.InvariantCulture), resultStyle);
-            EditorGUILayout.LabelField("Source Head LTC", GetSourceHeadTimecode(), resultStyle);
+            EditorGUILayout.LabelField("TL Head Frame", Mathf.RoundToInt(timelineStartSeconds * timelineFps).ToString(CultureInfo.InvariantCulture), VideoRackEditorUI.Result);
+            EditorGUILayout.LabelField("Source Head LTC", GetSourceHeadTimecode(), VideoRackEditorUI.Result);
         }
 
         private string GetSourceHeadTimecode()
@@ -235,71 +236,30 @@ namespace VLiveKit.VideoRack.Editor
             process.StartInfo.WorkingDirectory = Path.GetDirectoryName(ffmpegPath);
             process.StartInfo.UseShellExecute = false;
             process.StartInfo.CreateNoWindow = true;
-            process.StartInfo.RedirectStandardOutput = true;
+            process.StartInfo.RedirectStandardOutput = false;
             process.StartInfo.RedirectStandardError = true;
 
             process.Start();
-            var stdout = process.StandardOutput.ReadToEnd();
             var stderr = process.StandardError.ReadToEnd();
             process.WaitForExit();
 
             if (process.ExitCode != 0)
-                throw new InvalidOperationException($"ffmpeg failed with exit code {process.ExitCode}\n{stdout}\n{stderr}");
-        }
-
-        private void InitializeStyles()
-        {
-            if (headerStyle != null && panelStyle != null && sectionTitleStyle != null && hintStyle != null && resultStyle != null)
-                return;
-
-            headerStyle = new GUIStyle(EditorStyles.boldLabel)
-            {
-                fontSize = 17,
-                normal = { textColor = EditorGUIUtility.isProSkin ? new Color(0.90f, 0.91f, 0.92f) : new Color(0.12f, 0.13f, 0.14f) },
-                margin = new RectOffset(0, 0, 3, 1)
-            };
-
-            panelStyle = new GUIStyle(EditorStyles.helpBox)
-            {
-                padding = new RectOffset(10, 10, 8, 9),
-                margin = new RectOffset(8, 8, 5, 6)
-            };
-
-            sectionTitleStyle = new GUIStyle(EditorStyles.miniBoldLabel)
-            {
-                fontSize = 10,
-                normal = { textColor = new Color(0.08f, 0.38f, 0.86f) }
-            };
-
-            hintStyle = new GUIStyle(EditorStyles.helpBox)
-            {
-                fontSize = 10,
-                wordWrap = true
-            };
-
-            resultStyle = new GUIStyle(EditorStyles.boldLabel)
-            {
-                normal = { textColor = EditorGUIUtility.isProSkin ? new Color(0.88f, 0.90f, 0.92f) : new Color(0.10f, 0.12f, 0.14f) }
-            };
+                throw new InvalidOperationException($"ffmpeg failed with exit code {process.ExitCode}\n{stderr}");
         }
 
         private void DrawHeader()
         {
-            var rect = GUILayoutUtility.GetRect(0f, 44f, GUILayout.ExpandWidth(true));
-            EditorGUI.DrawRect(rect, EditorGUIUtility.isProSkin ? new Color(0.145f, 0.145f, 0.145f) : new Color(0.86f, 0.87f, 0.88f));
-            EditorGUI.DrawRect(new Rect(rect.x, rect.yMax - 1f, rect.width, 1f), new Color(0.08f, 0.38f, 0.86f, 0.95f));
-            GUI.Label(new Rect(rect.x + 12f, rect.y + 7f, rect.width - 24f, 22f), "VIDEO RACK / LTC", headerStyle);
-            GUI.Label(new Rect(rect.x + 12f, rect.y + 26f, rect.width - 24f, 16f), "Media timecode analyzer", EditorStyles.miniLabel);
+            VideoRackEditorUI.DrawHeader("LTC Media Analyzer", "Media timecode analyzer", isAnalyzing ? "Analyzing" : "Ready");
         }
 
         private void DrawSectionTitle(string title)
         {
-            EditorGUILayout.LabelField(title, sectionTitleStyle);
+            VideoRackEditorUI.DrawSectionTitle(title);
         }
 
         private void DrawHint(string text)
         {
-            EditorGUILayout.LabelField(text, hintStyle);
+            VideoRackEditorUI.DrawHint(text);
         }
 
         private void AppendLog(string text)
